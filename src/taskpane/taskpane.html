@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Weekly Plan</title>
+
+  <!-- Office JavaScript API -->
+  <script src="https://appsforoffice.microsoft.com/lib/1.1/hosted/office.js"></script>
+
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+    }
+
+    .container {
+      padding: 16px;
+      max-width: 320px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      color: white;
+      text-align: center;
+      margin: 0 0 16px 0;
+      font-size: 22px;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+
+    #sideload-msg {
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      text-align: center;
+      color: #666;
+    }
+
+    #app-body {
+      display: none;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 14px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    }
+
+    .card h2 {
+      margin: 0 0 10px 0;
+      font-size: 15px;
+      color: #333;
+      border-bottom: 2px solid #667eea;
+      padding-bottom: 6px;
+    }
+
+    .sheet-indicator {
+      background: rgba(255,255,255,0.2);
+      color: white;
+      padding: 8px 12px;
+      border-radius: 8px;
+      text-align: center;
+      font-size: 13px;
+      margin-bottom: 8px;
+    }
+
+    .sheet-indicator strong {
+      font-size: 15px;
+    }
+
+    .status {
+      padding: 10px;
+      border-radius: 8px;
+      font-size: 12px;
+      line-height: 1.4;
+      background: #f5f5f5;
+      color: #666;
+    }
+
+    .status.success { background: #e8f5e9; color: #2e7d32; }
+    .status.error { background: #ffebee; color: #c62828; }
+    .status.warning { background: #fff3e0; color: #e65100; }
+    .status.info { background: #e3f2fd; color: #1565c0; }
+
+    .btn-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn-row .btn {
+      flex: 1;
+    }
+
+    .btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 10px 14px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      transition: all 0.2s ease;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn-secondary {
+      background: #f0f0f0;
+      color: #333;
+    }
+
+    .btn-secondary:hover {
+      background: #e0e0e0;
+    }
+
+    .btn-success {
+      background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+      color: white;
+    }
+
+    .btn-success:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(17, 153, 142, 0.4);
+    }
+
+    .btn-warning {
+      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+      color: white;
+    }
+
+    .collapsible {
+      display: none;
+      margin-top: 10px;
+      padding: 12px;
+      background: #f9f9f9;
+      border-radius: 8px;
+    }
+
+    .help-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .help-icon {
+      font-size: 18px;
+      min-width: 24px;
+    }
+
+    .help-text {
+      font-size: 12px;
+      color: #555;
+      line-height: 1.4;
+    }
+
+    .help-text strong {
+      color: #333;
+    }
+
+    .streak-box {
+      background: #fff3e0;
+      border-left: 4px solid #ff9800;
+      padding: 10px;
+      border-radius: 0 8px 8px 0;
+      margin-top: 10px;
+    }
+
+    .streak-box h3 {
+      margin: 0 0 6px 0;
+      font-size: 13px;
+      color: #e65100;
+    }
+
+    .formula {
+      font-family: 'Courier New', monospace;
+      background: #f5f5f5;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      display: inline-block;
+    }
+
+    .form-group {
+      margin-bottom: 12px;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 4px;
+      color: #333;
+    }
+
+    .form-group input {
+      width: 100%;
+      padding: 8px 10px;
+      border: 2px solid #e0e0e0;
+      border-radius: 6px;
+      font-size: 13px;
+    }
+
+    .form-group input:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    .footer {
+      text-align: center;
+      color: rgba(255,255,255,0.7);
+      font-size: 10px;
+      margin-top: 16px;
+    }
+
+    .tab-bar {
+      display: flex;
+      background: rgba(255,255,255,0.1);
+      border-radius: 8px;
+      padding: 4px;
+      margin-bottom: 12px;
+    }
+
+    .tab {
+      flex: 1;
+      padding: 8px;
+      text-align: center;
+      color: rgba(255,255,255,0.7);
+      font-size: 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .tab.active {
+      background: white;
+      color: #667eea;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>📅 Weekly Plan</h1>
+
+    <section id="sideload-msg">
+      <p>Please sideload your add-in to see app body.</p>
+    </section>
+
+    <main id="app-body">
+      <!-- Sheet Indicator -->
+      <div class="sheet-indicator">
+        Current Sheet: <strong id="current-sheet">Loading...</strong>
+      </div>
+
+      <!-- Status Card -->
+      <div class="card">
+        <h2>📋 Status</h2>
+        <div id="status" class="status">Initializing...</div>
+      </div>
+
+      <!-- Common Actions -->
+      <div class="card">
+        <h2>⚡ Quick Actions</h2>
+        <div class="btn-group">
+          <div class="btn-row">
+            <button class="btn btn-success" onclick="refreshCurrentSheet()">
+              🔄 Refresh
+            </button>
+            <button class="btn btn-primary" onclick="promptSaveFile()">
+              💾 Save
+            </button>
+          </div>
+        </div>
+        <p id="save-note" style="font-size: 10px; color: #888; margin: 8px 0 0 0; text-align: center;">
+          Excel Online auto-saves. Desktop: Ctrl+S / Cmd+S
+        </p>
+      </div>
+
+      <!-- ==================== HABITS SECTION ==================== -->
+      <div id="habits-actions" class="card" style="display: none;">
+        <h2>🎯 Habits Tracker</h2>
+        <div class="btn-group">
+          <div class="btn-row">
+            <button class="btn btn-primary" onclick="sortHabits()">
+              📊 Sort
+            </button>
+            <button class="btn btn-secondary" onclick="refreshHabitsDates()">
+              📅 Dates
+            </button>
+          </div>
+          <button class="btn btn-secondary" onclick="toggleSection('habits-help')">
+            ❓ Help
+          </button>
+        </div>
+
+        <!-- Habits Help Section -->
+        <div id="habits-help" class="collapsible">
+          <div class="help-item">
+            <span class="help-icon">✅</span>
+            <div class="help-text">
+              <strong>Mark Habit Done:</strong><br>
+              Click habit name in <strong>Column A</strong>
+            </div>
+          </div>
+          <div class="help-item">
+            <span class="help-icon">📅</span>
+            <div class="help-text">
+              <strong>14-Day Window:</strong><br>
+              Auto-refreshes or click "Dates"
+            </div>
+          </div>
+          <div class="streak-box">
+            <h3>🔥 Streak Bonus</h3>
+            <div class="formula">Score = Base × 1.1<sup>streak</sup></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================== WEEKLY/TIMETABLE SECTION ==================== -->
+      <div id="weekly-actions" class="card" style="display: none;">
+        <h2>📅 Weekly Timetable</h2>
+        <div class="btn-group">
+          <button class="btn btn-primary" onclick="randomPickFromUI()">
+            🎲 Random Pick
+          </button>
+          <div class="btn-row">
+            <button class="btn btn-secondary" onclick="toggleSection('add-task-section')">
+              ➕ Add
+            </button>
+            <button class="btn btn-secondary" onclick="toggleSection('delete-task-section')">
+              🗑️ Delete
+            </button>
+          </div>
+
+          <!-- Archive & New Week Section -->
+          <div class="btn-row">
+            <button class="btn btn-warning" onclick="archiveAndStartNewWeek()">
+              📦 Archive
+            </button>
+            <button class="btn btn-success" onclick="startNewWeekFromUI()">
+              🗓️ New Week
+            </button>
+          </div>
+          <button class="btn btn-secondary" onclick="exportSummaryData()">
+            📊 Export Summary
+          </button>
+
+          <button class="btn btn-secondary" onclick="toggleSection('weekly-help')">
+            ❓ Help
+          </button>
+        </div>
+
+        <!-- Weekly Help Section -->
+        <div id="weekly-help" class="collapsible">
+          <div class="help-item">
+            <span class="help-icon">📝</span>
+            <div class="help-text">
+              <strong>Select Task:</strong><br>
+              Click task cell (C, E, G...) to pick from dropdown
+            </div>
+          </div>
+          <div class="help-item">
+            <span class="help-icon">⭐</span>
+            <div class="help-text">
+              <strong>Enter Score:</strong><br>
+              Click score cell (D, F, H...) after selecting task.<br>
+              Values: 0, 0.2, 0.4, 0.6, 0.8, 1
+            </div>
+          </div>
+          <div class="help-item">
+            <span class="help-icon">🎲</span>
+            <div class="help-text">
+              <strong>Random Pick:</strong><br>
+              Fills empty slots with random tasks
+            </div>
+          </div>
+          <div class="help-item">
+            <span class="help-icon">🎨</span>
+            <div class="help-text">
+              <strong>Colors:</strong><br>
+              🟢 Positive | 🔴 Negative | 🟡 Neutral
+            </div>
+          </div>
+        </div>
+
+        <!-- Add Task Section -->
+        <div id="add-task-section" class="collapsible">
+          <h3 style="margin: 0 0 10px 0; font-size: 14px;">➕ Add New Task</h3>
+          <div class="form-group">
+            <label>Task Name</label>
+            <input type="text" id="new-task-name" placeholder="e.g., Deep Work">
+          </div>
+          <div class="form-group">
+            <label>Weight (Score Multiplier)</label>
+            <input type="number" id="new-task-weight" value="1" min="0.1" step="0.1">
+          </div>
+          <button class="btn btn-success" onclick="addTask()" style="width: 100%;">
+            Add Task
+          </button>
+        </div>
+
+        <!-- Delete Task Section -->
+        <div id="delete-task-section" class="collapsible">
+          <h3 style="margin: 0 0 10px 0; font-size: 14px;">🗑️ Delete Task</h3>
+          <p style="font-size: 12px; color: #666; margin: 0 0 10px 0;">
+            To delete a task, go to the <strong>Tasks</strong> sheet and delete the row directly.
+          </p>
+        </div>
+
+        <!-- Thank Section -->
+        <div id="thank-section" class="collapsible">
+          <h3 style="margin: 0 0 10px 0; font-size: 14px;">🙏 Thank You!</h3>
+          <p style="font-size: 12px; color: #666; margin: 0;">
+            Thank you for using Weekly Plan!<br>
+            Track your habits and tasks to build better routines.
+          </p>
+        </div>
+      </div>
+
+    </main>
+
+    <div class="footer">
+      Weekly Plan • Excel Add-in<br>
+      Works on Desktop, Web & Mobile
+    </div>
+  </div>
+
+  <!--
+    JavaScript Modules - Load in dependency order:
+    1. config.js  - Configuration constants (no dependencies)
+    2. state.js   - Global state (no dependencies)
+    3. utils.js   - Utility functions (no dependencies)
+    4. ui.js      - UI functions (depends on state, config)
+    5. habits.js  - Habits logic (depends on state, config, utils, ui)
+    6. weekly.js  - Weekly logic (depends on state, config, utils, ui)
+    7. events.js  - Event handlers (depends on all above)
+    8. app.js     - Main initialization (depends on all above)
+  -->
+  <script src="js/config.js"></script>
+  <script src="js/state.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/habits.js"></script>
+  <script src="js/weekly.js"></script>
+  <script src="js/events.js"></script>
+  <script src="js/app.js"></script>
+
+</body>
+</html>

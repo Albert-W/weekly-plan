@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OfficeApp
+  xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+  xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides"
+  xsi:type="TaskPaneApp">
+
+  <!-- Unique ID - Generate your own at https://www.uuidgenerator.net/ -->
+  <Id>c8e4b3a2-1d5f-4e6a-9b2c-7f8d0e1a3b5c</Id>
+
+  <Version>1.0.0</Version>
+  <ProviderName>Yichang Wu</ProviderName>
+  <DefaultLocale>en-US</DefaultLocale>
+  <DisplayName DefaultValue="Weekly Plan"/>
+  <Description DefaultValue="Weekly planning and timetable management with habits tracking. Plan your week with time blocks and score your tasks."/>
+
+  <!--
+    IMPORTANT: Replace YOUR_USERNAME with your GitHub username!
+    Example: https://yichangwu.github.io/weekly-plan/src/taskpane/taskpane.html
+  -->
+  <DefaultSettings>
+    <SourceLocation DefaultValue="https://YOUR_USERNAME.github.io/weekly-plan/src/taskpane/taskpane.html"/>
+  </DefaultSettings>
+
+  <!-- Required permissions -->
+  <Permissions>ReadWriteDocument</Permissions>
+
+  <!-- Supported Office hosts -->
+  <Hosts>
+    <Host Name="Workbook"/>
+  </Hosts>
+
+  <!-- Requirements - Excel API 1.4+ for onSelectionChanged -->
+  <Requirements>
+    <Sets DefaultMinVersion="1.4">
+      <Set Name="ExcelApi"/>
+    </Sets>
+  </Requirements>
+
+  <!-- Version Overrides for modern add-in experience -->
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <Hosts>
+      <Host xsi:type="Workbook">
+
+        <!-- Desktop and Web form factor -->
+        <DesktopFormFactor>
+
+          <!-- Function file for commands (optional) -->
+          <FunctionFile resid="Taskpane.Url"/>
+
+          <!-- Add-in commands on the ribbon -->
+          <ExtensionPoint xsi:type="PrimaryCommandSurface">
+            <OfficeTab id="TabHome">
+              <Group id="WeeklyPlanGroup">
+                <Label resid="GroupLabel"/>
+
+                <!-- Show Task Pane button -->
+                <Control xsi:type="Button" id="ShowTaskpane">
+                  <Label resid="TaskpaneButton.Label"/>
+                  <Supertip>
+                    <Title resid="TaskpaneButton.Label"/>
+                    <Description resid="TaskpaneButton.Tooltip"/>
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Icon.16x16"/>
+                    <bt:Image size="32" resid="Icon.32x32"/>
+                    <bt:Image size="80" resid="Icon.80x80"/>
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <TaskpaneId>WeeklyPlanTaskpane</TaskpaneId>
+                    <SourceLocation resid="Taskpane.Url"/>
+                  </Action>
+                </Control>
+
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+
+        </DesktopFormFactor>
+
+      </Host>
+    </Hosts>
+
+    <!-- Resources -->
+    <Resources>
+      <bt:Images>
+        <!-- Using placeholder emoji icons - replace with actual icon URLs if needed -->
+        <bt:Image id="Icon.16x16" DefaultValue="https://YOUR_USERNAME.github.io/weekly-plan/assets/icon-16.png"/>
+        <bt:Image id="Icon.32x32" DefaultValue="https://YOUR_USERNAME.github.io/weekly-plan/assets/icon-32.png"/>
+        <bt:Image id="Icon.80x80" DefaultValue="https://YOUR_USERNAME.github.io/weekly-plan/assets/icon-80.png"/>
+      </bt:Images>
+      <bt:Urls>
+        <bt:Url id="Taskpane.Url" DefaultValue="https://YOUR_USERNAME.github.io/weekly-plan/src/taskpane/taskpane.html"/>
+      </bt:Urls>
+      <bt:ShortStrings>
+        <bt:String id="GroupLabel" DefaultValue="Weekly Plan"/>
+        <bt:String id="TaskpaneButton.Label" DefaultValue="Weekly Plan"/>
+      </bt:ShortStrings>
+      <bt:LongStrings>
+        <bt:String id="TaskpaneButton.Tooltip" DefaultValue="Open the Weekly Plan to manage your timetable and track habits"/>
+      </bt:LongStrings>
+    </Resources>
+
+  </VersionOverrides>
+
+</OfficeApp>
