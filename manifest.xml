@@ -20,7 +20,7 @@
     Example: https://yichangwu.github.io/weekly-plan/src/taskpane/taskpane.html
   -->
   <DefaultSettings>
-    <SourceLocation DefaultValue="https://YOUR_USERNAME.github.io/weekly-plan/src/taskpane/taskpane.html"/>
+    <SourceLocation DefaultValue="https://Albert-W.github.io/weekly-plan/src/taskpane/taskpane.html"/>
   </DefaultSettings>
 
   <!-- Required permissions -->
