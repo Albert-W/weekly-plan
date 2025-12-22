@@ -7,6 +7,7 @@
 
 /**
  * Handle sheet activation (when user clicks on a different sheet tab)
+ * Also re-initializes Weekly sheet if it's a new day
  * @param {Object} event - The activation event
  */
 async function handleSheetActivated(event) {
@@ -24,7 +25,24 @@ async function handleSheetActivated(event) {
       newSheetName = activeSheet.name;
       console.log('Sheet changed to:', newSheetName);
 
-      // Only update if it's actually a different sheet
+      // Check if we need to re-initialize Weekly sheet (new day check)
+      if (newSheetName === CONFIG.WEEKLY_SHEET) {
+        const today = formatDateYYYYMMDD(new Date());
+        const lastInit = state.weekly.lastInitDate;
+
+        console.log('Weekly sheet activated. Today:', today, 'Last init:', lastInit);
+
+        if (lastInit !== today) {
+          console.log('🌅 New day detected! Re-initializing Weekly sheet...');
+          await initializeWeeklyOnOpen(context);
+        } else {
+          // Same day - just refresh time highlighting
+          const weeklySheet = context.workbook.worksheets.getItem(CONFIG.WEEKLY_SHEET);
+          await highlightCurrentTimeRow(context, weeklySheet);
+        }
+      }
+
+      // Only update event handlers if it's actually a different sheet
       if (state.currentSheet !== newSheetName) {
         state.currentSheet = newSheetName;
 

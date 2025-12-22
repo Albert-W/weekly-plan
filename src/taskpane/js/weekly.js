@@ -122,6 +122,9 @@ async function initializeWeeklyOnOpen(context) {
   // Highlight current time row
   await highlightCurrentTimeRow(context, sheet);
 
+  // Track the initialization date
+  state.weekly.lastInitDate = formatDateYYYYMMDD(today);
+
   console.log('Weekly fully initialized:', state.weekly);
 }
 
@@ -1001,6 +1004,151 @@ async function startNewWeekFromUI() {
 }
 
 /**
+ * Export all important sheets as separate CSV files for backup
+ * This exports Weekly, Goals, and Charter sheets
+ */
+async function exportWeeklyAsXLS() {
+  try {
+    showStatus('📊 Exporting all sheets...', 'info');
+
+    let weekLabel = '';
+
+    await Excel.run(async (context) => {
+      const weeklySheet = context.workbook.worksheets.getItem(CONFIG.WEEKLY_SHEET);
+
+      // Get date info for filename
+      const dateCell = weeklySheet.getRange('B4');
+      dateCell.load('values');
+
+      const headerRange = weeklySheet.getRange('D4:P4');
+      headerRange.load('values');
+
+      await context.sync();
+
+      // Build week label for filename
+      const dateStr = String(dateCell.values[0][0] || '').trim();
+      if (dateStr && headerRange.values[0].length > 0) {
+        const firstDay = headerRange.values[0][0];
+        const lastDay = headerRange.values[0][headerRange.values[0].length - 1];
+        weekLabel = `${dateStr.replace(' ', '-')}_${firstDay}-${lastDay}`;
+      } else {
+        weekLabel = formatDateYYYYMMDD(new Date());
+      }
+    });
+
+    // Export each sheet
+    const sheetsToExport = [
+      { name: CONFIG.WEEKLY_SHEET, prefix: 'Weekly' },
+      { name: 'Goals', prefix: 'Goals' },
+      { name: 'Charter', prefix: 'Charter' }
+    ];
+
+    let exportedCount = 0;
+
+    for (const sheetInfo of sheetsToExport) {
+      const csvContent = await exportSheetAsCSV(sheetInfo.name);
+      if (csvContent) {
+        const filename = `${sheetInfo.prefix}_${weekLabel}.csv`;
+        downloadCSV(csvContent, filename);
+        exportedCount++;
+        // Small delay between downloads to prevent browser blocking
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    }
+
+    if (exportedCount > 0) {
+      showStatus(`📊 Exported ${exportedCount} sheets as CSV files!`, 'success');
+    } else {
+      showStatus('No sheets found to export.', 'warning');
+    }
+
+  } catch (error) {
+    console.error('Export error:', error);
+    showStatus('Error: ' + error.message, 'error');
+  }
+}
+
+/**
+ * Export a single sheet as CSV
+ * @param {string} sheetName - Name of the sheet to export
+ * @returns {string|null} CSV content or null if sheet not found
+ */
+async function exportSheetAsCSV(sheetName) {
+  try {
+    let csvContent = '';
+
+    await Excel.run(async (context) => {
+      const sheet = context.workbook.worksheets.getItemOrNullObject(sheetName);
+      await context.sync();
+
+      if (sheet.isNullObject) {
+        console.log(`Sheet "${sheetName}" not found, skipping...`);
+        return;
+      }
+
+      // Get the used range to export entire sheet layout
+      const usedRange = sheet.getUsedRange();
+      usedRange.load('values');
+
+      await context.sync();
+
+      // Convert entire used range to CSV (preserving exact layout)
+      for (const row of usedRange.values) {
+        csvContent += row.map(cell => {
+          // Format time values properly
+          if (typeof cell === 'number' && cell > 0 && cell < 1) {
+            // This is likely a time value (Excel stores time as fraction of day)
+            const hours = Math.floor(cell * 24);
+            const mins = Math.round((cell * 24 - hours) * 60);
+            return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+          }
+          return escapeCSV(cell);
+        }).join(',') + '\n';
+      }
+    });
+
+    return csvContent || null;
+
+  } catch (error) {
+    console.error(`Error exporting sheet "${sheetName}":`, error);
+    return null;
+  }
+}
+
+/**
+ * Download base64 content as an XLSX file
+ * @param {string} base64Content - Base64 encoded workbook content
+ * @param {string} filename - Filename for download
+ */
+function downloadXLSX(base64Content, filename) {
+  // Convert base64 to binary
+  const byteCharacters = atob(base64Content);
+  const byteNumbers = new Array(byteCharacters.length);
+  for (let i = 0; i < byteCharacters.length; i++) {
+    byteNumbers[i] = byteCharacters.charCodeAt(i);
+  }
+  const byteArray = new Uint8Array(byteNumbers);
+
+  // Create blob and download
+  const blob = new Blob([byteArray], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  });
+  const url = URL.createObjectURL(blob);
+
+  const link = document.createElement('a');
+  link.setAttribute('href', url);
+  link.setAttribute('download', filename);
+  link.style.visibility = 'hidden';
+
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+
+  URL.revokeObjectURL(url);
+  console.log('Downloaded:', filename);
+}
+
+/**
  * Export Summary sheet data as CSV
  */
 async function exportSummaryData() {
@@ -1058,4 +1206,6 @@ window.archiveAndStartNewWeek = archiveAndStartNewWeek;
 window.exportWeekData = exportWeekData;
 window.startNewWeekFromUI = startNewWeekFromUI;
 window.exportSummaryData = exportSummaryData;
+window.exportWeeklyAsXLS = exportWeeklyAsXLS;
 window.downloadCSV = downloadCSV;
+window.downloadXLSX = downloadXLSX;

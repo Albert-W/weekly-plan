@@ -33,6 +33,40 @@
       text-shadow: 0 2px 4px rgba(0,0,0,0.2);
     }
 
+    .calendar-icon {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      background: white;
+      border-radius: 4px;
+      font-size: 14px;
+      font-weight: bold;
+      color: #333;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+      position: relative;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+
+    .calendar-icon::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 8px;
+      background: #e74c3c;
+      border-radius: 4px 4px 0 0;
+    }
+
+    .calendar-icon .date-num {
+      margin-top: 4px;
+      line-height: 1;
+    }
+
     #sideload-msg {
       background: white;
       padding: 20px;
@@ -266,7 +300,10 @@
 </head>
 <body>
   <div class="container">
-    <h1>📅 Weekly Plan</h1>
+    <h1><span class="calendar-icon"><span class="date-num" id="date-num"></span></span> Weekly Plan</h1>
+    <script>
+      document.getElementById('date-num').textContent = new Date().getDate();
+    </script>
 
     <section id="sideload-msg">
       <p>Please sideload your add-in to see app body.</p>
@@ -286,7 +323,7 @@
 
       <!-- Common Actions -->
       <div class="card">
-        <h2>⚡ Quick Actions</h2>
+        <h2>⚡ Common Actions</h2>
         <div class="btn-group">
           <div class="btn-row">
             <button class="btn btn-success" onclick="refreshCurrentSheet()">
@@ -360,8 +397,8 @@
 
           <!-- Archive & New Week Section -->
           <div class="btn-row">
-            <button class="btn btn-warning" onclick="archiveAndStartNewWeek()">
-              📦 Archive
+            <button class="btn btn-warning" onclick="exportWeeklyAsXLS()">
+              📦 Export All
             </button>
             <button class="btn btn-success" onclick="startNewWeekFromUI()">
               🗓️ New Week

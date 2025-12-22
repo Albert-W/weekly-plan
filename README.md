@@ -103,7 +103,7 @@ const CONFIG = {
 ### 1. Start the development server (with no caching)
 
 ```bash
-cd /Users/yichangwu/Documents/excel/weekly-plan/src/taskpane
+cd /Users/yichangwu/Documents/weekly-plan/src/taskpane
 npx http-server -c-1 -p 3000 --cors -S \
   -C ~/.office-addin-dev-certs/localhost.crt \
   -K ~/.office-addin-dev-certs/localhost.key

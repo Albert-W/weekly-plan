@@ -160,6 +160,7 @@ async function initializeAddin() {
 
 /**
  * Manually refresh and detect current sheet
+ * Also re-initializes Weekly sheet if it's a new day
  * Call this if automatic detection fails
  */
 async function refreshCurrentSheet() {
@@ -177,6 +178,23 @@ async function refreshCurrentSheet() {
       sheetName = activeSheet.name;
       state.currentSheet = sheetName;
       console.log('Refreshed current sheet:', state.currentSheet);
+
+      // Check if we need to re-initialize Weekly sheet (new day check)
+      if (sheetName === CONFIG.WEEKLY_SHEET) {
+        const today = formatDateYYYYMMDD(new Date());
+        const lastInit = state.weekly.lastInitDate;
+
+        console.log('Weekly sheet refresh. Today:', today, 'Last init:', lastInit);
+
+        if (lastInit !== today) {
+          console.log('🌅 New day detected! Re-initializing Weekly sheet...');
+          await initializeWeeklyOnOpen(context);
+        } else {
+          // Same day - just refresh time highlighting
+          const weeklySheet = context.workbook.worksheets.getItem(CONFIG.WEEKLY_SHEET);
+          await highlightCurrentTimeRow(context, weeklySheet);
+        }
+      }
 
       // Try to re-register events
       try {

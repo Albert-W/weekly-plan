@@ -20,7 +20,8 @@ const state = {
     dIndex: 0,          // Current day index (0-6 for Mon-Sun)
     lastMonday: null,
     taskl: 4,           // Last row in Tasks sheet
-    summaryL: 1         // Last row in Summary sheet
+    summaryL: 1,        // Last row in Summary sheet
+    lastInitDate: null  // Track last initialization date (YYYY-MM-DD)
   },
 
   // Event handlers
