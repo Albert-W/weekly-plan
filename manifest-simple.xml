@@ -11,7 +11,7 @@
   xsi:type="TaskPaneApp">
 
   <Id>c8e4b3a2-1d5f-4e6a-9b2c-7f8d0e1a3b5c</Id>
-  <Version>1.0.0</Version>
+  <Version>1.1.0</Version>
   <ProviderName>Yichang Wu</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="Weekly Plan"/>
