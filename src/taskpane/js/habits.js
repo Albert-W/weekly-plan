@@ -132,7 +132,12 @@ async function handleHabitsSelection(context, address, column, colIndex, row) {
 
 /**
  * Record habit completion for a row
- * Calculates streak bonus and updates counts
+ * Calculates streak bonus and updates counts.
+ *
+ * Performance: batches reads/writes into 2 context.sync() calls
+ * (one before computing, one after writing) regardless of streak
+ * length, instead of N+5 round-trips.
+ *
  * @param {Excel.RequestContext} context - Excel context
  * @param {number} row - Row number of the habit
  */
@@ -144,62 +149,60 @@ async function recordHabitDone(context, row) {
     return;
   }
 
-  // Get habit name
+  // ------------------------------------------------------------------
+  // 1. Queue all reads we need, then sync ONCE.
+  // ------------------------------------------------------------------
   const habitCell = sheet.getRange(`A${row}`);
+  const baseScoreCell = sheet.getRange(`C${row}`);
+  const dayStart = CONFIG.HABITS.COLUMNS.DAY_START;
+  const dayEnd = CONFIG.HABITS.COLUMNS.DAY_END;
+  const daysRange = sheet.getRange(`${dayStart}${row}:${dayEnd}${row}`);
+  const totalCell = sheet.getRange(`${CONFIG.HABITS.COLUMNS.TOTAL_COUNT}${row}`);
+
   habitCell.load('values');
+  baseScoreCell.load('values');
+  daysRange.load('values');
+  totalCell.load('values');
   await context.sync();
 
   const habitName = habitCell.values[0][0];
   if (!habitName) return;
 
-  // Calculate day column
-  const dayColIndex = columnLetterToIndex(CONFIG.HABITS.COLUMNS.DAY_START) + state.habits.currentDayIndex;
-  const dayColumn = indexToColumnLetter(dayColIndex);
+  // ------------------------------------------------------------------
+  // 2. Compute streak and weighted score from in-memory values.
+  // ------------------------------------------------------------------
+  const dayValues = daysRange.values[0]; // single row -> array of 14 cells
+  const todayIndex = state.habits.currentDayIndex;
 
-  // Calculate streak (consecutive days before today)
   let streak = 0;
-  for (let d = state.habits.currentDayIndex - 1; d >= 0; d--) {
-    const prevCol = indexToColumnLetter(columnLetterToIndex(CONFIG.HABITS.COLUMNS.DAY_START) + d);
-    const prevCell = sheet.getRange(`${prevCol}${row}`);
-    prevCell.load('values');
-    await context.sync();
-
-    if (prevCell.values[0][0] && prevCell.values[0][0] !== 0) {
+  for (let d = todayIndex - 1; d >= 0; d--) {
+    const v = dayValues[d];
+    if (v && v !== 0) {
       streak++;
     } else {
       break;
     }
   }
 
-  // Get base score
-  const scoreCell = sheet.getRange(`C${row}`);
-  scoreCell.load('values');
-  await context.sync();
-  const baseScore = parseFloat(scoreCell.values[0][0]) || 1;
-
-  // Calculate weighted score with streak bonus
+  const baseScore = parseFloat(baseScoreCell.values[0][0]) || 1;
   const weightedScore = baseScore * Math.pow(CONFIG.HABITS.STREAK_MULTIPLIER, streak);
 
-  // Increment day count
-  const dayCell = sheet.getRange(`${dayColumn}${row}`);
-  dayCell.load('values');
-  await context.sync();
-  const currentCount = parseInt(dayCell.values[0][0]) || 0;
-  dayCell.values = [[currentCount + 1]];
+  const currentCount = parseInt(dayValues[todayIndex]) || 0;
+  const currentTotal = parseInt(totalCell.values[0][0]) || 0;
 
-  // Update total count
-  const totalCell = sheet.getRange(`R${row}`);
-  totalCell.load('values');
-  await context.sync();
-  const total = parseInt(totalCell.values[0][0]) || 0;
-  totalCell.values = [[total + 1]];
+  // ------------------------------------------------------------------
+  // 3. Queue all writes, then sync ONCE.
+  // ------------------------------------------------------------------
+  const dayColIndex = columnLetterToIndex(dayStart) + todayIndex;
+  const dayColumn = indexToColumnLetter(dayColIndex);
 
-  // Highlight the label cell
+  sheet.getRange(`${dayColumn}${row}`).values = [[currentCount + 1]];
+  totalCell.values = [[currentTotal + 1]];
   sheet.getRange(`B${row}`).format.fill.color = CONFIG.COLORS.POSITIVE;
 
   await context.sync();
 
-  // Update summary sheet
+  // Update summary sheet (this owns its own sync calls)
   await updateSummary(context, weightedScore, 0);
 
   const streakMsg = streak > 0 ? ` 🔥 ${streak + 1}-day streak!` : '';
