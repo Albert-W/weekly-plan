@@ -1,8 +1,42 @@
 # Weekly Plan - Excel Add-in
 
-This is a **unified Excel Add-in** for **Weekly Planning and Timetable** management with integrated **Habits Tracking**.
+## Introduction
 
-It uses **Office Add-ins with Office.js** which supports `SelectionChanged` events - the closest equivalent to VBA's `Worksheet_SelectionChange`.
+**Weekly Plan** is a personal productivity Excel Add-in that turns a spreadsheet into a lightweight **weekly time-block planner** and **habits tracker**. It was migrated from a legacy VBA macro workbook to a modern, cross-platform **Office Add-in built on Office.js**, so the same workflow now runs in Excel Online, Excel for Mac, and Excel for Windows — no macros required.
+
+The add-in lives in a side **task pane** next to your spreadsheet and reacts to what you do in the grid:
+
+- **Weekly / Timetable sheet** — Plan each day in fixed time blocks (rows = hours, columns = days). Pair each block with a task from your `Tasks` sheet, then score how the block actually went (`0` – `1`). Scores are color-coded (green / yellow / red), summed into a daily total row, and rolled up into the `Summary` sheet automatically. A "Random Pick" button fills empty slots from your weighted task list, and a "New Week" action archives the current week to CSV and resets the grid.
+- **Habits sheet** — Track up to 14 days of habit completions in a rolling window. Clicking a habit name records a completion and applies a streak bonus (`score × 1.1^streak`), rewarding consistency. Habits can be re-sorted by score from the task pane.
+- **Auto-initialization** — When the workbook opens, the add-in activates the `Weekly` sheet, highlights the current day column and the current time row, and detects whether a new week (or a new day) has started so it can archive and reset for you.
+
+### Why an Office Add-in instead of VBA or Google Sheets?
+
+The original workbook relied heavily on VBA events (`Workbook_Open`, `Worksheet_SelectionChange`, `Worksheet_Change`) that don't exist in Google Sheets and don't run in Excel Online. Office.js is the only option that preserves the event-driven UX while also working in the browser and on multiple platforms.
+
+| Feature | VBA | Google Sheets | Excel Add-in (this project) |
+|---------|-----|---------------|------------------------------|
+| Selection Change Event | ✅ | ❌ | ✅ |
+| Cell Change Event | ✅ | ✅ | ✅ |
+| Works Online | ❌ | ✅ | ✅ |
+| Works on Desktop | ✅ | ❌ | ✅ |
+| Works on Mobile | ❌ | ✅ | ✅ (limited) |
+| Language | VBA | JavaScript | JavaScript |
+
+### Architecture at a glance
+
+The code is a plain HTML + vanilla-JS task pane (no build step, no framework) split into small modules so each Office.js concern stays isolated:
+
+- `app.js` — `Office.onReady` bootstrap and per-sheet initialization
+- `config.js` — All sheet names, row/column layout, colors, and scoring options
+- `state.js` — Lightweight global state (current sheet, last-init date, counters)
+- `weekly.js` / `habits.js` — Per-sheet business logic (scoring, archive, streaks)
+- `events.js` — `onSelectionChanged` and `onChanged` handlers
+- `ui.js` / `utils.js` — Status messages, modal popups, date and column helpers
+
+Because there is no bundler, you can edit a JS file, hit refresh in Excel, and see changes instantly — see [Quick Start](#quick-start---local-development) below.
+
+It uses **Office Add-ins with Office.js**, whose `SelectionChanged` event is the closest equivalent to VBA's `Worksheet_SelectionChange` and is what made this migration possible.
 
 ## Why Excel Add-ins?
 
