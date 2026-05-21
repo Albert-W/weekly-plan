@@ -129,13 +129,25 @@ async function handleSelectionChanged(event) {
  * @param {Excel.Worksheet} sheet - The worksheet to register for
  */
 async function registerOnChangedEvent(context, sheet) {
+  // Remove existing handler if any (prevents stacking duplicate handlers
+  // each time the sheet is activated or refreshed)
+  if (state.changeHandler) {
+    try {
+      state.changeHandler.remove();
+      await context.sync();
+    } catch (e) {
+      console.log('Could not remove previous change handler:', e.message);
+    }
+  }
+
   try {
-    sheet.onChanged.add(async (event) => {
+    state.changeHandler = sheet.onChanged.add(async (event) => {
       await handleCellChanged(event);
     });
     await context.sync();
     console.log('OnChanged event registered for:', sheet.name);
   } catch (e) {
+    state.changeHandler = null;
     console.log('OnChanged event not supported:', e.message);
   }
 }

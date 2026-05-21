@@ -25,7 +25,8 @@ const state = {
   },
 
   // Event handlers
-  selectionHandler: null
+  selectionHandler: null,
+  changeHandler: null
 };
 
 // Export for use in other modules
