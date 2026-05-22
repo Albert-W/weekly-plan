@@ -280,43 +280,67 @@ async function setNewWeekDates(context, sheet) {
 }
 
 /**
- * Clear content for new week
- * Equivalent to VBA clearForNewWeek()
+ * Clear content for new week.
+ * Equivalent to VBA clearForNewWeek().
+ *
+ * Behavior preserved: only clear the task+score pair for rows that
+ * actually had a score recorded. Rows with a task selected but no
+ * score yet are left untouched (matches the legacy VBA).
+ *
+ * Performance: previously ran 7 days x ~33 rows = ~231 individual
+ * context.sync() calls reading one score cell at a time. Now it
+ * loads the whole C5:P{scoreLine-1} data area in a single read,
+ * scans the in-memory 2D array, queues all clears at once, and
+ * commits with a single final sync. Total: 2 syncs.
+ *
  * @param {Excel.RequestContext} context - Excel context
  */
 async function clearForNewWeek(context) {
   try {
     const sheet = context.workbook.worksheets.getItem(CONFIG.WEEKLY_SHEET);
+    const dataStart = CONFIG.WEEKLY.DATA_START_ROW;
+    const dataEnd = CONFIG.WEEKLY.scoreLine - 1;
 
-    // Clear background colors for data area
-    const colorRange = sheet.getRange(`C5:Z${CONFIG.WEEKLY.scoreLine}`);
-    colorRange.format.fill.clear();
+    // ----------------------------------------------------------------
+    // 1. Queue unconditional clears + the bulk read, then sync ONCE.
+    //    All of these ride on the same round-trip as the values read.
+    // ----------------------------------------------------------------
+    sheet.getRange(`C5:Z${CONFIG.WEEKLY.scoreLine}`).format.fill.clear();
+    sheet
+      .getRange(`C${CONFIG.WEEKLY.scoreLine}:P${CONFIG.WEEKLY.scoreLine}`)
+      .clear(Excel.ClearApplyTo.contents);
 
-    // Clear scores row
-    const scoresRange = sheet.getRange(`C${CONFIG.WEEKLY.scoreLine}:P${CONFIG.WEEKLY.scoreLine}`);
-    scoresRange.clear(Excel.ClearApplyTo.contents);
+    const dataRange = sheet.getRange(`C${dataStart}:P${dataEnd}`);
+    dataRange.load('values');
+    await context.sync();
 
-    // Clear each day's task and score cells
+    // ----------------------------------------------------------------
+    // 2. Scan values in memory. dataRange.values is a 2D array indexed
+    //    [rowOffset][colOffset]. Column C is offset 0, so day d's
+    //    task column = d*2, score column = d*2 + 1.
+    // ----------------------------------------------------------------
+    const values = dataRange.values;
     for (let day = 0; day < CONFIG.WEEKLY.DAYS_IN_WEEK; day++) {
-      const taskCol = day * 2 + 3;  // 3,5,7,9,11,13,15
-      const scoreCol = day * 2 + 4; // 4,6,8,10,12,14,16
+      const taskColOffset = day * 2;
+      const scoreColOffset = day * 2 + 1;
+      const taskCol = day * 2 + 3;
+      const scoreCol = day * 2 + 4;
       const taskColLetter = indexToColumnLetter(taskCol - 1);
       const scoreColLetter = indexToColumnLetter(scoreCol - 1);
 
-      for (let row = CONFIG.WEEKLY.DATA_START_ROW; row < CONFIG.WEEKLY.scoreLine; row++) {
-        // Check if score cell has value
-        const scoreCell = sheet.getRange(`${scoreColLetter}${row}`);
-        scoreCell.load('values');
-        await context.sync();
-
-        if (scoreCell.values[0][0] !== '' && scoreCell.values[0][0] !== null) {
-          // Clear task and score
+      for (let i = 0; i < values.length; i++) {
+        const scoreVal = values[i][scoreColOffset];
+        if (scoreVal !== '' && scoreVal !== null) {
+          const row = dataStart + i;
           sheet.getRange(`${taskColLetter}${row}`).clear(Excel.ClearApplyTo.contents);
           sheet.getRange(`${scoreColLetter}${row}`).clear(Excel.ClearApplyTo.contents);
         }
       }
     }
 
+    // ----------------------------------------------------------------
+    // 3. Commit every queued clear in one round-trip.
+    // ----------------------------------------------------------------
     await context.sync();
     console.log('Cleared content for new week');
     showStatus('Cleared for new week!', 'success');
