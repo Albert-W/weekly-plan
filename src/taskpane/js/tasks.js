@@ -15,7 +15,7 @@
  *   B: weight (numeric multiplier)
  *   C: creation timestamp
  *
- * Updates state.weekly.taskl to the new last-row index.
+ * Updates state.weekly.lastTaskRow to the new last-row index.
  *
  * @param {Excel.RequestContext} context - Excel context owned by caller
  * @param {string} name - Task name (must be non-empty)
@@ -50,7 +50,7 @@ async function createTask(context, name, weight) {
 
   // Keep the in-memory last-row tracker in sync so the next
   // randomPick / score-change call sees the row.
-  state.weekly.taskl = newRow;
+  state.weekly.lastTaskRow = newRow;
 
   return { row: newRow, name: trimmedName, weight: numericWeight };
 }

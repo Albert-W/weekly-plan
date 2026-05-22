@@ -24,13 +24,13 @@ function setupTasksSheet({ existingTasks = [] } = {}) {
       [`B${row}`]: t.weight ?? 1,
     });
   });
-  state.weekly.taskl = existingTasks.length ? 4 + existingTasks.length - 1 : 3;
+  state.weekly.lastTaskRow = existingTasks.length ? 4 + existingTasks.length - 1 : 3;
   return fake;
 }
 
 describe('createTask', () => {
   beforeEach(() => {
-    state.weekly.taskl = 3;
+    state.weekly.lastTaskRow = 3;
   });
 
   it('appends a row with name, weight, and timestamp', async () => {
@@ -52,13 +52,13 @@ describe('createTask', () => {
     expect(fake.helpers.getCellValue(CONFIG.TASKS_SHEET, 'C5')).toBeTypeOf('string');
   });
 
-  it('updates state.weekly.taskl to the new row', async () => {
+  it('updates state.weekly.lastTaskRow to the new row', async () => {
     const fake = setupTasksSheet({ existingTasks: [{ name: 'Read' }, { name: 'Walk' }] });
     fake.installAsExcelGlobal();
 
     await Excel.run(async (ctx) => { await createTask(ctx, 'New', 1); });
 
-    expect(state.weekly.taskl).toBe(6);
+    expect(state.weekly.lastTaskRow).toBe(6);
   });
 
   it('trims whitespace from the name', async () => {

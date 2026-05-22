@@ -32,7 +32,7 @@ function setupSheets({ tasks = [], existingDailyTotal = 0 } = {}) {
       [`G${row}`]: t.totalScore ?? 0,
     });
   });
-  state.weekly.taskl = 4 + tasks.length - 1;
+  state.weekly.lastTaskRow = 4 + tasks.length - 1;
   state.weekly.lastMonday = new Date(2024, 0, 1);
   return fake;
 }
@@ -50,7 +50,7 @@ describe('processWeeklyScoreChange', () => {
     });
 
     // Daily total in D38 should now be 1.0
-    expect(fake.helpers.getCellValue(CONFIG.WEEKLY_SHEET, `D${CONFIG.WEEKLY.scoreLine}`)).toBe(1);
+    expect(fake.helpers.getCellValue(CONFIG.WEEKLY_SHEET, `D${CONFIG.WEEKLY.SCORE_ROW}`)).toBe(1);
     // Stats updated: F4 = 1, G4 = 1.0
     expect(fake.helpers.getCellValue(CONFIG.TASKS_SHEET, 'F4')).toBe(1);
     expect(fake.helpers.getCellValue(CONFIG.TASKS_SHEET, 'G4')).toBe(1);
@@ -88,7 +88,7 @@ describe('processWeeklyScoreChange', () => {
     fake.helpers.setCells(CONFIG.WEEKLY_SHEET, {
       C5: 'Read',
       E6: 'Read',
-      [`D${CONFIG.WEEKLY.scoreLine}`]: 0.4, // pre-existing daily total
+      [`D${CONFIG.WEEKLY.SCORE_ROW}`]: 0.4, // pre-existing daily total
     });
     fake.installAsExcelGlobal();
 
@@ -97,7 +97,7 @@ describe('processWeeklyScoreChange', () => {
     });
 
     // 0.4 + 0.5 = 0.9
-    expect(fake.helpers.getCellValue(CONFIG.WEEKLY_SHEET, `D${CONFIG.WEEKLY.scoreLine}`))
+    expect(fake.helpers.getCellValue(CONFIG.WEEKLY_SHEET, `D${CONFIG.WEEKLY.SCORE_ROW}`))
       .toBeCloseTo(0.9, 9);
   });
 
@@ -137,8 +137,8 @@ describe('processWeeklyScoreChange', () => {
     // Previously these two were left null:
     expect(fake.helpers.getCellValue(CONFIG.TASKS_SHEET, 'F5')).toBe(1);
     expect(fake.helpers.getCellValue(CONFIG.TASKS_SHEET, 'G5')).toBe(0.5);
-    // state.weekly.taskl should be bumped
-    expect(state.weekly.taskl).toBe(5);
+    // state.weekly.lastTaskRow should be bumped
+    expect(state.weekly.lastTaskRow).toBe(5);
   });
 
   it('does nothing if the task name cell is empty', async () => {
@@ -151,7 +151,7 @@ describe('processWeeklyScoreChange', () => {
     });
 
     expect(fake.helpers.getCellValue(CONFIG.TASKS_SHEET, 'F4')).toBe(0);
-    expect(fake.helpers.getCellValue(CONFIG.WEEKLY_SHEET, `D${CONFIG.WEEKLY.scoreLine}`)).toBeNull();
+    expect(fake.helpers.getCellValue(CONFIG.WEEKLY_SHEET, `D${CONFIG.WEEKLY.SCORE_ROW}`)).toBeNull();
   });
 
   it('PERF: uses at most 3 syncs per score entry regardless of task count (regression guard for task #2)', async () => {

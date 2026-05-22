@@ -18,12 +18,12 @@ async function initializeWeeklySheet(context) {
   await context.sync();
 
   // Using fixed values from CONFIG instead of dynamic calculation
-  // CONFIG.WEEKLY.lastTimeLine = 36, CONFIG.WEEKLY.scoreLine = 38
+  // CONFIG.WEEKLY.LAST_TIME_ROW = 36, CONFIG.WEEKLY.SCORE_ROW = 38
 
   // Calculate current day index (0=Mon, 6=Sun)
   const today = new Date();
   const dayOfWeek = today.getDay();
-  state.weekly.dIndex = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+  state.weekly.currentDayIndex = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
 
   // Calculate last Monday
   state.weekly.lastMonday = getMonday(today);
@@ -59,7 +59,7 @@ async function initializeWeeklyOnOpen(context) {
 
   await context.sync();
 
-  // Using fixed values from CONFIG: lastTimeLine = 36, scoreLine = 38
+  // Using fixed values from CONFIG: LAST_TIME_ROW = 36, SCORE_ROW = 38
 
   const dateStr = String(dateCell.values[0][0] || '');
   const firstDay = parseInt(firstDayCell.values[0][0]) || 0;
@@ -107,11 +107,11 @@ async function initializeWeeklyOnOpen(context) {
     await setNewWeekDates(context, sheet);
   }
 
-  // Using fixed CONFIG values for lastTimeLine and scoreLine
+  // Using fixed CONFIG values for LAST_TIME_ROW and SCORE_ROW
 
   // Calculate current day index (0=Mon, 6=Sun)
   const dayOfWeek = today.getDay();
-  state.weekly.dIndex = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+  state.weekly.currentDayIndex = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
 
   // Calculate last Monday
   state.weekly.lastMonday = getMonday(today);
@@ -161,8 +161,8 @@ async function initializeTasksSheet(context) {
   usedRange.load('rowCount');
   await context.sync();
 
-  state.weekly.taskl = usedRange.rowCount;
-  console.log('Tasks sheet initialized, taskl:', state.weekly.taskl);
+  state.weekly.lastTaskRow = usedRange.rowCount;
+  console.log('Tasks sheet initialized, lastTaskRow:', state.weekly.lastTaskRow);
 }
 
 /**
@@ -175,8 +175,8 @@ async function initializeSummarySheet(context) {
   usedRange.load('rowCount');
   await context.sync();
 
-  state.weekly.summaryL = usedRange.rowCount;
-  console.log('Summary sheet initialized, summaryL:', state.weekly.summaryL);
+  state.weekly.lastSummaryRow = usedRange.rowCount;
+  console.log('Summary sheet initialized, lastSummaryRow:', state.weekly.lastSummaryRow);
 }
 
 /**
@@ -217,7 +217,7 @@ async function setNewWeekDates(context, sheet) {
  *
  * Performance: previously ran 7 days x ~33 rows = ~231 individual
  * context.sync() calls reading one score cell at a time. Now it
- * loads the whole C5:P{scoreLine-1} data area in a single read,
+ * loads the whole C5:P{SCORE_ROW-1} data area in a single read,
  * scans the in-memory 2D array, queues all clears at once, and
  * commits with a single final sync. Total: 2 syncs.
  *
@@ -227,15 +227,15 @@ async function clearForNewWeek(context) {
   try {
     const sheet = context.workbook.worksheets.getItem(CONFIG.WEEKLY_SHEET);
     const dataStart = CONFIG.WEEKLY.DATA_START_ROW;
-    const dataEnd = CONFIG.WEEKLY.scoreLine - 1;
+    const dataEnd = CONFIG.WEEKLY.SCORE_ROW - 1;
 
     // ----------------------------------------------------------------
     // 1. Queue unconditional clears + the bulk read, then sync ONCE.
     //    All of these ride on the same round-trip as the values read.
     // ----------------------------------------------------------------
-    sheet.getRange(`C5:Z${CONFIG.WEEKLY.scoreLine}`).format.fill.clear();
+    sheet.getRange(`C5:Z${CONFIG.WEEKLY.SCORE_ROW}`).format.fill.clear();
     sheet
-      .getRange(`C${CONFIG.WEEKLY.scoreLine}:P${CONFIG.WEEKLY.scoreLine}`)
+      .getRange(`C${CONFIG.WEEKLY.SCORE_ROW}:P${CONFIG.WEEKLY.SCORE_ROW}`)
       .clear(Excel.ClearApplyTo.contents);
 
     const dataRange = sheet.getRange(`C${dataStart}:P${dataEnd}`);
@@ -287,8 +287,8 @@ async function highlightCurrentDay(context, sheet) {
   sheet.getRange('A4:P4').format.fill.clear();
 
   // Highlight current day's task and score header columns
-  const taskCol = state.weekly.dIndex * 2 + 3;  // 3,5,7,9,11,13,15
-  const scoreCol = state.weekly.dIndex * 2 + 4; // 4,6,8,10,12,14,16
+  const taskCol = state.weekly.currentDayIndex * 2 + 3;  // 3,5,7,9,11,13,15
+  const scoreCol = state.weekly.currentDayIndex * 2 + 4; // 4,6,8,10,12,14,16
   const taskColLetter = indexToColumnLetter(taskCol - 1);
   const scoreColLetter = indexToColumnLetter(scoreCol - 1);
 
@@ -296,7 +296,7 @@ async function highlightCurrentDay(context, sheet) {
   sheet.getRange(`${scoreColLetter}4`).format.fill.color = CONFIG.COLORS.TODAY_HIGHLIGHT;
 
   await context.sync();
-  console.log('Highlighted current day column:', state.weekly.dIndex);
+  console.log('Highlighted current day column:', state.weekly.currentDayIndex);
 }
 
 /**
@@ -308,7 +308,7 @@ async function highlightCurrentDay(context, sheet) {
 async function highlightCurrentTimeRow(context, sheet) {
   try {
     // Clear previous time highlighting
-    sheet.getRange('B5:B' + CONFIG.WEEKLY.lastTimeLine).format.fill.clear();
+    sheet.getRange('B5:B' + CONFIG.WEEKLY.LAST_TIME_ROW).format.fill.clear();
 
     // Get current time as decimal (e.g., 15.75 for 15:45)
     const now = new Date();
@@ -318,10 +318,10 @@ async function highlightCurrentTimeRow(context, sheet) {
 
     console.log('=== HIGHLIGHT TIME DEBUG ===');
     console.log('Current time:', currentHour + ':' + currentMinutes, '= decimal:', currentTimeDecimal);
-    console.log('Looking in rows', CONFIG.WEEKLY.DATA_START_ROW, 'to', CONFIG.WEEKLY.lastTimeLine);
+    console.log('Looking in rows', CONFIG.WEEKLY.DATA_START_ROW, 'to', CONFIG.WEEKLY.LAST_TIME_ROW);
 
     // Get time column values
-    const timeRange = sheet.getRange(`B${CONFIG.WEEKLY.DATA_START_ROW}:B${CONFIG.WEEKLY.lastTimeLine}`);
+    const timeRange = sheet.getRange(`B${CONFIG.WEEKLY.DATA_START_ROW}:B${CONFIG.WEEKLY.LAST_TIME_ROW}`);
     timeRange.load('values');
     await context.sync();
 
@@ -385,8 +385,8 @@ async function highlightCurrentTimeRow(context, sheet) {
       sheet.getRange(`B${row}`).format.fill.color = CONFIG.COLORS.CURRENT_TIME;
 
       // Check if current day's task/score cells are empty
-      const taskCol = state.weekly.dIndex * 2 + 3;
-      const scoreCol = state.weekly.dIndex * 2 + 4;
+      const taskCol = state.weekly.currentDayIndex * 2 + 3;
+      const scoreCol = state.weekly.currentDayIndex * 2 + 4;
       const taskColLetter = indexToColumnLetter(taskCol - 1);
       const scoreColLetter = indexToColumnLetter(scoreCol - 1);
 
@@ -518,14 +518,14 @@ async function handleWeeklySelection(context, address, column, colIndex, row) {
 
   // Task column selection (odd columns 3-15, rows 5+)
   if (CONFIG.WEEKLY.TASK_COLUMNS.includes(colIndex) &&
-      row >= CONFIG.WEEKLY.DATA_START_ROW && row <= CONFIG.WEEKLY.lastTimeLine) {
+      row >= CONFIG.WEEKLY.DATA_START_ROW && row <= CONFIG.WEEKLY.LAST_TIME_ROW) {
     showStatus('Select a task from the dropdown, or use Add Task to create new.', 'info');
     return;
   }
 
   // Score column selection (even columns 4-16, rows 5+)
   if (CONFIG.WEEKLY.SCORE_COLUMNS.includes(colIndex) &&
-      row >= CONFIG.WEEKLY.DATA_START_ROW && row < CONFIG.WEEKLY.scoreLine) {
+      row >= CONFIG.WEEKLY.DATA_START_ROW && row < CONFIG.WEEKLY.SCORE_ROW) {
 
     // Check if task is selected first
     const taskCell = sheet.getRange(address).getOffsetRange(0, -1);
@@ -568,7 +568,7 @@ async function randomPick(context) {
     }
 
     // Get all tasks (starting from row 4)
-    const tasksRange = tasksSheet.getRange(`A4:A${state.weekly.taskl}`);
+    const tasksRange = tasksSheet.getRange(`A4:A${state.weekly.lastTaskRow}`);
     tasksRange.load('values');
     await context.sync();
 
@@ -579,12 +579,12 @@ async function randomPick(context) {
     }
 
     // Current day task column
-    const taskColumn = state.weekly.dIndex * 2 + 3; // 3,5,7,9,11,13,15
+    const taskColumn = state.weekly.currentDayIndex * 2 + 3; // 3,5,7,9,11,13,15
     const taskColLetter = indexToColumnLetter(taskColumn - 1);
 
     // Get time column and task column
-    const timeRange = weeklySheet.getRange(`B${CONFIG.WEEKLY.DATA_START_ROW}:B${CONFIG.WEEKLY.lastTimeLine}`);
-    const taskRange = weeklySheet.getRange(`${taskColLetter}${CONFIG.WEEKLY.DATA_START_ROW}:${taskColLetter}${CONFIG.WEEKLY.lastTimeLine}`);
+    const timeRange = weeklySheet.getRange(`B${CONFIG.WEEKLY.DATA_START_ROW}:B${CONFIG.WEEKLY.LAST_TIME_ROW}`);
+    const taskRange = weeklySheet.getRange(`${taskColLetter}${CONFIG.WEEKLY.DATA_START_ROW}:${taskColLetter}${CONFIG.WEEKLY.LAST_TIME_ROW}`);
 
     timeRange.load('values');
     taskRange.load('values');
@@ -646,12 +646,12 @@ async function processWeeklyScoreChange(context, row, col, newScore) {
   const taskCell = weeklySheet.getRange(`${taskColLetter}${row}`);
   const scoreCell = weeklySheet.getRange(`${scoreColLetter}${row}`);
   const dailyTotalCell = weeklySheet.getRange(
-    `${scoreColLetter}${CONFIG.WEEKLY.scoreLine}`
+    `${scoreColLetter}${CONFIG.WEEKLY.SCORE_ROW}`
   );
-  const tasksNames = tasksSheet.getRange(`A4:A${state.weekly.taskl}`);
-  const tasksWeights = tasksSheet.getRange(`B4:B${state.weekly.taskl}`);
-  const tasksCounts = tasksSheet.getRange(`F4:F${state.weekly.taskl}`);
-  const tasksScores = tasksSheet.getRange(`G4:G${state.weekly.taskl}`);
+  const tasksNames = tasksSheet.getRange(`A4:A${state.weekly.lastTaskRow}`);
+  const tasksWeights = tasksSheet.getRange(`B4:B${state.weekly.lastTaskRow}`);
+  const tasksCounts = tasksSheet.getRange(`F4:F${state.weekly.lastTaskRow}`);
+  const tasksScores = tasksSheet.getRange(`G4:G${state.weekly.lastTaskRow}`);
 
   taskCell.load('values');
   dailyTotalCell.load('values');
@@ -675,7 +675,7 @@ async function processWeeklyScoreChange(context, row, col, newScore) {
       taskIndex = i + 4;
       break;
     }
-    if (name === 'others') {
+    if (name === CONFIG.TASKS.FALLBACK_NAME) {
       othersIndex = i + 4;
     }
   }
@@ -688,7 +688,7 @@ async function processWeeklyScoreChange(context, row, col, newScore) {
     taskIndex = othersIndex;
     lookupIndex = othersIndex - 4;
   } else {
-    taskIndex = state.weekly.taskl + 1;
+    taskIndex = state.weekly.lastTaskRow + 1;
     lookupIndex = -1;
     isNewTask = true;
   }
@@ -724,13 +724,13 @@ async function processWeeklyScoreChange(context, row, col, newScore) {
   if (isNewTask) {
     // First-ever auto-creation of "others": populate every stat column
     // so the row is fully consistent.
-    tasksSheet.getRange(`A${taskIndex}`).values = [['others']];
+    tasksSheet.getRange(`A${taskIndex}`).values = [[CONFIG.TASKS.FALLBACK_NAME]];
     tasksSheet.getRange(`B${taskIndex}`).values = [[1]];
     tasksSheet.getRange(`C${taskIndex}`).values = [[now]];
     tasksSheet.getRange(`D${taskIndex}`).values = [[now]];
     tasksSheet.getRange(`F${taskIndex}`).values = [[1]];
     tasksSheet.getRange(`G${taskIndex}`).values = [[weightedScore]];
-    state.weekly.taskl = taskIndex;
+    state.weekly.lastTaskRow = taskIndex;
   } else {
     tasksSheet.getRange(`D${taskIndex}`).values = [[now]];
     tasksSheet.getRange(`F${taskIndex}`).values = [[currentCount + 1]];
@@ -768,7 +768,7 @@ async function updateSummary(context, positiveScore, negativeScore) {
     const todayStr = formatDateYYYYMMDD(new Date());
 
     // Find or create today's row
-    const summaryRange = summarySheet.getRange(`${CONFIG.SUMMARY.DATE_COLUMN}1:${CONFIG.SUMMARY.DATE_COLUMN}${state.weekly.summaryL + 1}`);
+    const summaryRange = summarySheet.getRange(`${CONFIG.SUMMARY.DATE_COLUMN}1:${CONFIG.SUMMARY.DATE_COLUMN}${state.weekly.lastSummaryRow + 1}`);
     summaryRange.load('values');
     await context.sync();
 
@@ -781,9 +781,9 @@ async function updateSummary(context, positiveScore, negativeScore) {
     }
 
     if (summaryRow === -1) {
-      summaryRow = state.weekly.summaryL + 1;
+      summaryRow = state.weekly.lastSummaryRow + 1;
       summarySheet.getRange(`${CONFIG.SUMMARY.DATE_COLUMN}${summaryRow}`).values = [[todayStr]];
-      state.weekly.summaryL = summaryRow;
+      state.weekly.lastSummaryRow = summaryRow;
     }
 
     // Update positive score (Column D from config)
@@ -883,10 +883,10 @@ async function buildWeeklyCSV(context) {
   const dateCell = weeklySheet.getRange('B4');
   const headerRange = weeklySheet.getRange('D4:P4');
   const timeRange = weeklySheet.getRange(
-    `B${CONFIG.WEEKLY.DATA_START_ROW}:B${CONFIG.WEEKLY.lastTimeLine}`
+    `B${CONFIG.WEEKLY.DATA_START_ROW}:B${CONFIG.WEEKLY.LAST_TIME_ROW}`
   );
   const dataRange = weeklySheet.getRange(
-    `C${CONFIG.WEEKLY.DATA_START_ROW}:P${CONFIG.WEEKLY.lastTimeLine}`
+    `C${CONFIG.WEEKLY.DATA_START_ROW}:P${CONFIG.WEEKLY.LAST_TIME_ROW}`
   );
 
   dateCell.load('values');
@@ -1079,8 +1079,8 @@ async function exportWeeklyAsXLS() {
     // Export each sheet
     const sheetsToExport = [
       { name: CONFIG.WEEKLY_SHEET, prefix: 'Weekly' },
-      { name: 'Goals', prefix: 'Goals' },
-      { name: 'Charter', prefix: 'Charter' }
+      { name: CONFIG.GOALS_SHEET, prefix: 'Goals' },
+      { name: CONFIG.CHARTER_SHEET, prefix: 'Charter' }
     ];
 
     let exportedCount = 0;

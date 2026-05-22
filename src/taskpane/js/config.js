@@ -12,6 +12,15 @@ const CONFIG = {
   TIMETABLE_SHEET: 'Timetable',  // Alternative name for Weekly
   TASKS_SHEET: 'Tasks',
   SUMMARY_SHEET: 'Summary',
+  GOALS_SHEET: 'Goals',
+  CHARTER_SHEET: 'Charter',
+
+  // Tasks sheet conventions
+  TASKS: {
+    // Name used for the auto-created "catch-all" row when a scored
+    // task isn't found in the Tasks list.
+    FALLBACK_NAME: 'others',
+  },
 
   // ==================== HABITS CONFIG ====================
   HABITS: {
@@ -36,8 +45,8 @@ const CONFIG = {
     HEADER_ROW: 4,
     TIME_COLUMN: 2,     // Column B for timestamps
     DATE_CELL: 'B4',    // Cell containing "yyyy mm" format
-    lastTimeLine: 36,   // Last row with time data
-    scoreLine: 38,      // Score totals row
+    LAST_TIME_ROW: 36,  // Last row with time data
+    SCORE_ROW: 38,      // Score totals row
     // Control buttons in row 2
     BUTTONS: {
       HELP: 3,      // Column C

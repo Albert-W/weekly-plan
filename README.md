@@ -109,8 +109,8 @@ const CONFIG = {
   // Weekly sheet settings
   WEEKLY: {
     DATA_START_ROW: 5,
-    lastTimeLine: 36,      // Last row with time data
-    scoreLine: 38,         // Score totals row
+    LAST_TIME_ROW: 36,     // Last row with time data
+    SCORE_ROW: 38,         // Score totals row
     // ...
   },
 

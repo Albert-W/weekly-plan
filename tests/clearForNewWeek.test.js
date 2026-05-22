@@ -32,8 +32,8 @@ function setupSheet({ entries }) {
   }
   // Seed the score totals row with some numbers to confirm clearing
   fake.helpers.setCells(CONFIG.WEEKLY_SHEET, {
-    [`C${CONFIG.WEEKLY.scoreLine}`]: 1.5,
-    [`D${CONFIG.WEEKLY.scoreLine}`]: 2.0,
+    [`C${CONFIG.WEEKLY.SCORE_ROW}`]: 1.5,
+    [`D${CONFIG.WEEKLY.SCORE_ROW}`]: 2.0,
   });
   return fake;
 }
@@ -82,8 +82,8 @@ describe('clearForNewWeek', () => {
 
     await Excel.run(async (ctx) => { await clearForNewWeek(ctx); });
 
-    expect(fake.helpers.getCellValue(CONFIG.WEEKLY_SHEET, `C${CONFIG.WEEKLY.scoreLine}`)).toBeNull();
-    expect(fake.helpers.getCellValue(CONFIG.WEEKLY_SHEET, `D${CONFIG.WEEKLY.scoreLine}`)).toBeNull();
+    expect(fake.helpers.getCellValue(CONFIG.WEEKLY_SHEET, `C${CONFIG.WEEKLY.SCORE_ROW}`)).toBeNull();
+    expect(fake.helpers.getCellValue(CONFIG.WEEKLY_SHEET, `D${CONFIG.WEEKLY.SCORE_ROW}`)).toBeNull();
   });
 
   it('resets background fill on the data area', async () => {

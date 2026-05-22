@@ -17,11 +17,11 @@ const state = {
 
   // Weekly state
   weekly: {
-    dIndex: 0,          // Current day index (0-6 for Mon-Sun)
+    currentDayIndex: 0,     // Current day index (0-6 for Mon-Sun)
     lastMonday: null,
-    taskl: 4,           // Last row in Tasks sheet
-    summaryL: 1,        // Last row in Summary sheet
-    lastInitDate: null  // Track last initialization date (YYYY-MM-DD)
+    lastTaskRow: 4,         // Last row in Tasks sheet
+    lastSummaryRow: 1,      // Last row in Summary sheet
+    lastInitDate: null      // Track last initialization date (YYYY-MM-DD)
   },
 
   // Event handlers

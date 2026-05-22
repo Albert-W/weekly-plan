@@ -174,7 +174,7 @@ async function handleCellChanged(event) {
 
       // Check if it's a score column (even: 4,6,8,10,12,14,16) in data area
       if (CONFIG.WEEKLY.SCORE_COLUMNS.includes(colIndex) &&
-          row >= CONFIG.WEEKLY.DATA_START_ROW && row <= CONFIG.WEEKLY.lastTimeLine) {
+          row >= CONFIG.WEEKLY.DATA_START_ROW && row <= CONFIG.WEEKLY.LAST_TIME_ROW) {
 
         const sheet = context.workbook.worksheets.getItem(CONFIG.WEEKLY_SHEET);
         const scoreCell = sheet.getRange(address);

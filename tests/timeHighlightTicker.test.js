@@ -13,7 +13,7 @@ import { CONFIG, state } from './harness.js';
 
 describe('tickTimeHighlight', () => {
   beforeEach(() => {
-    state.weekly.dIndex = 0;
+    state.weekly.currentDayIndex = 0;
     state.weekly.lastMonday = new Date(2024, 0, 1);
   });
 
