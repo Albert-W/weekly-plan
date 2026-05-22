@@ -63,8 +63,9 @@ function updateUI() {
 }
 
 /**
- * Add a new task to the Tasks sheet
- * Called from the Add Task form in the UI
+ * Add a new task from the Add Task form.
+ * Pure DOM/UI shell: reads inputs, delegates Excel work to createTask
+ * (in tasks.js), then resets the form and shows a status banner.
  */
 async function addTask() {
   const nameInput = document.getElementById('new-task-name');
@@ -80,36 +81,12 @@ async function addTask() {
 
   try {
     await Excel.run(async (context) => {
-      const tasksSheet = context.workbook.worksheets.getItemOrNullObject(CONFIG.TASKS_SHEET);
-      await context.sync();
+      const result = await createTask(context, name, weight);
 
-      if (tasksSheet.isNullObject) {
-        showStatus('Tasks sheet not found!', 'error');
-        return;
-      }
-
-      // Find last row
-      const usedRange = tasksSheet.getRange('A:A').getUsedRange();
-      usedRange.load('rowCount');
-      await context.sync();
-
-      const newRow = usedRange.rowCount + 1;
-
-      // Add task
-      tasksSheet.getRange(`A${newRow}`).values = [[name]];
-      tasksSheet.getRange(`B${newRow}`).values = [[weight]];
-      tasksSheet.getRange(`C${newRow}`).values = [[formatDateTime(new Date())]];
-
-      await context.sync();
-
-      // Clear form
       if (nameInput) nameInput.value = '';
       if (weightInput) weightInput.value = '1';
 
-      // Update state
-      state.weekly.taskl = newRow;
-
-      showStatus(`✅ Task "${name}" added!`, 'success');
+      showStatus(`✅ Task "${result.name}" added!`, 'success');
     });
   } catch (error) {
     showStatus('Error: ' + error.message, 'error');

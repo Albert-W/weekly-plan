@@ -29,6 +29,9 @@ export const updateSummary = globalThis.updateSummary;
 // habits.js
 export const recordHabitDone = globalThis.recordHabitDone;
 
+// tasks.js
+export const createTask = globalThis.createTask;
+
 // events.js
 export const registerOnChangedEvent = globalThis.registerOnChangedEvent;
 export const handleCellChanged = globalThis.handleCellChanged;

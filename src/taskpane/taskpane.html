@@ -501,15 +501,17 @@
     2. state.js   - Global state (no dependencies)
     3. utils.js   - Utility functions (no dependencies)
     4. ui.js      - UI functions (depends on state, config)
-    5. habits.js  - Habits logic (depends on state, config, utils, ui)
-    6. weekly.js  - Weekly logic (depends on state, config, utils, ui)
-    7. events.js  - Event handlers (depends on all above)
-    8. app.js     - Main initialization (depends on all above)
+    5. tasks.js   - Tasks-sheet domain logic (depends on config, state, utils)
+    6. habits.js  - Habits logic (depends on state, config, utils, ui)
+    7. weekly.js  - Weekly logic (depends on state, config, utils, ui, tasks)
+    8. events.js  - Event handlers (depends on all above)
+    9. app.js     - Main initialization (depends on all above)
   -->
   <script src="js/config.js"></script>
   <script src="js/state.js"></script>
   <script src="js/utils.js"></script>
   <script src="js/ui.js"></script>
+  <script src="js/tasks.js"></script>
   <script src="js/habits.js"></script>
   <script src="js/weekly.js"></script>
   <script src="js/events.js"></script>
