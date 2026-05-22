@@ -91,7 +91,7 @@ async function initializeWeeklyOnOpen(context) {
       showStatus('🗓️ New week detected! Archiving...', 'info');
 
       // Step 1: Archive the current week data BEFORE clearing
-      await archiveWeekAutomatically(sheetLastMonday, firstDay);
+      await archiveWeekAutomatically();
 
       // Step 2: Clear the table for new week
       await clearForNewWeek(context);
@@ -129,94 +129,22 @@ async function initializeWeeklyOnOpen(context) {
 }
 
 /**
- * Automatically archive week data when new week is detected
- * This is called from initializeWeeklyOnOpen
- * @param {Date} weekMonday - The Monday of the week being archived
- * @param {number} firstDay - The first day number from the sheet
+ * Automatically archive week data when new week is detected.
+ * Called from initializeWeeklyOnOpen.
  */
-async function archiveWeekAutomatically(weekMonday, firstDay) {
+async function archiveWeekAutomatically() {
   try {
-    console.log('Auto-archiving week starting:', weekMonday);
-
-    let csvContent = '';
-    let weekLabel = '';
-
+    let result = null;
     await Excel.run(async (context) => {
-      const weeklySheet = context.workbook.worksheets.getItem(CONFIG.WEEKLY_SHEET);
-
-      // Get date info from B4
-      const dateCell = weeklySheet.getRange('B4');
-      dateCell.load('values');
-
-      // Get day headers (D4:P4)
-      const headerRange = weeklySheet.getRange('D4:P4');
-      headerRange.load('values');
-
-      // Get time column
-      const timeRange = weeklySheet.getRange(`B${CONFIG.WEEKLY.DATA_START_ROW}:B${CONFIG.WEEKLY.lastTimeLine}`);
-      timeRange.load('values');
-
-      // Get all task and score data (C5:P[timel])
-      const dataRange = weeklySheet.getRange(`C${CONFIG.WEEKLY.DATA_START_ROW}:P${CONFIG.WEEKLY.lastTimeLine}`);
-      dataRange.load('values');
-
-      await context.sync();
-
-      // Build week label for filename
-      const dateStr = String(dateCell.values[0][0] || '');
-      const firstDayNum = headerRange.values[0][0];
-      const lastDayNum = headerRange.values[0][headerRange.values[0].length - 1];
-      weekLabel = `${dateStr.replace(' ', '-')}_${firstDayNum}-${lastDayNum}`;
-
-      // Build CSV header
-      const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-      let headers = ['Time'];
-      for (let d = 0; d < CONFIG.WEEKLY.DAYS_IN_WEEK; d++) {
-        headers.push(`${days[d]}_Task`);
-        headers.push(`${days[d]}_Score`);
-      }
-      csvContent = headers.join(',') + '\n';
-
-      // Build CSV rows
-      for (let i = 0; i < timeRange.values.length; i++) {
-        const time = timeRange.values[i][0];
-        if (time === '' || time === null) continue;
-
-        // Format time
-        let timeStr;
-        if (typeof time === 'number') {
-          const hours = Math.floor(time * 24);
-          const mins = Math.round((time * 24 - hours) * 60);
-          timeStr = `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
-        } else {
-          timeStr = String(time);
-        }
-
-        let row = [escapeCSV(timeStr)];
-
-        // Add task/score pairs for each day
-        for (let d = 0; d < CONFIG.WEEKLY.DAYS_IN_WEEK; d++) {
-          const taskCol = d * 2;      // 0, 2, 4, 6, 8, 10, 12
-          const scoreCol = d * 2 + 1; // 1, 3, 5, 7, 9, 11, 13
-          const task = dataRange.values[i][taskCol] || '';
-          const score = dataRange.values[i][scoreCol];
-          row.push(escapeCSV(String(task)));
-          row.push(score !== null && score !== '' ? score : '');
-        }
-
-        csvContent += row.join(',') + '\n';
-      }
+      result = await buildWeeklyCSV(context);
     });
 
-    // Download the CSV
-    if (csvContent && csvContent.split('\n').length > 2) {
-      const filename = `Weekly_${weekLabel}.csv`;
-      downloadCSV(csvContent, filename);
-      console.log('✅ Week archived to:', filename);
+    if (result && result.csv.split('\n').length > 2) {
+      downloadCSV(result.csv, result.filename);
+      console.log('✅ Week archived to:', result.filename);
     } else {
       console.log('ℹ️ No data to archive for this week');
     }
-
   } catch (error) {
     console.error('Auto-archive error:', error);
     // Don't throw - allow the new week to start even if archive fails
@@ -870,89 +798,107 @@ async function archiveAndStartNewWeek() {
 }
 
 /**
- * Export current week data to CSV format
- * @returns {Object} Object with csv string and filename
+ * Export current week data to CSV format.
+ * Thin wrapper over buildWeeklyCSV that owns its own Excel.run.
+ * @returns {Promise<{csv: string, filename: string} | null>}
  */
 async function exportWeekData() {
   try {
-    let csvContent = '';
-    let weekLabel = '';
-
+    let result = null;
     await Excel.run(async (context) => {
-      const weeklySheet = context.workbook.worksheets.getItem(CONFIG.WEEKLY_SHEET);
-
-      // Get date info from B4
-      const dateCell = weeklySheet.getRange('B4');
-      dateCell.load('values');
-
-      // Get day headers (D4:P4)
-      const headerRange = weeklySheet.getRange('D4:P4');
-      headerRange.load('values');
-
-      // Get time column
-      const timeRange = weeklySheet.getRange(`B${CONFIG.WEEKLY.DATA_START_ROW}:B${CONFIG.WEEKLY.lastTimeLine}`);
-      timeRange.load('values');
-
-      // Get all task and score data (C5:P[timel])
-      const dataRange = weeklySheet.getRange(`C${CONFIG.WEEKLY.DATA_START_ROW}:P${CONFIG.WEEKLY.lastTimeLine}`);
-      dataRange.load('values');
-
-      await context.sync();
-
-      // Build week label for filename
-      const dateStr = String(dateCell.values[0][0] || '');
-      const firstDay = headerRange.values[0][0];
-      const lastDay = headerRange.values[0][headerRange.values[0].length - 1];
-      weekLabel = `${dateStr.replace(' ', '-')}_${firstDay}-${lastDay}`;
-
-      // Build CSV header
-      const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-      let headers = ['Time'];
-      for (let d = 0; d < CONFIG.WEEKLY.DAYS_IN_WEEK; d++) {
-        headers.push(`${days[d]}_Task`);
-        headers.push(`${days[d]}_Score`);
-      }
-      csvContent = headers.join(',') + '\n';
-
-      // Build CSV rows
-      for (let i = 0; i < timeRange.values.length; i++) {
-        const time = timeRange.values[i][0];
-        if (time === '' || time === null) continue;
-
-        // Format time
-        let timeStr;
-        if (typeof time === 'number') {
-          const hours = Math.floor(time * 24);
-          const mins = Math.round((time * 24 - hours) * 60);
-          timeStr = `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
-        } else {
-          timeStr = String(time);
-        }
-
-        let row = [escapeCSV(timeStr)];
-
-        // Add task/score pairs for each day
-        for (let d = 0; d < CONFIG.WEEKLY.DAYS_IN_WEEK; d++) {
-          const taskCol = d * 2;      // 0, 2, 4, 6, 8, 10, 12
-          const scoreCol = d * 2 + 1; // 1, 3, 5, 7, 9, 11, 13
-          const task = dataRange.values[i][taskCol] || '';
-          const score = dataRange.values[i][scoreCol];
-          row.push(escapeCSV(String(task)));
-          row.push(score !== null && score !== '' ? score : '');
-        }
-
-        csvContent += row.join(',') + '\n';
-      }
+      result = await buildWeeklyCSV(context);
     });
-
-    const filename = `Weekly_${weekLabel}.csv`;
-    return { csv: csvContent, filename: filename };
-
+    return result;
   } catch (error) {
     console.error('Export error:', error);
     showStatus('Error exporting: ' + error.message, 'error');
     return null;
   }
+}
+
+/**
+ * Build a CSV snapshot of the current Weekly sheet.
+ *
+ * Single source of truth for both the auto-archive on new-week
+ * detection and the manual "Export All" action. Caller owns the
+ * Excel.run context so this composes cleanly with other operations.
+ *
+ * @param {Excel.RequestContext} context - Excel context
+ * @returns {Promise<{csv: string, filename: string}>}
+ */
+async function buildWeeklyCSV(context) {
+  const weeklySheet = context.workbook.worksheets.getItem(CONFIG.WEEKLY_SHEET);
+
+  const dateCell = weeklySheet.getRange('B4');
+  const headerRange = weeklySheet.getRange('D4:P4');
+  const timeRange = weeklySheet.getRange(
+    `B${CONFIG.WEEKLY.DATA_START_ROW}:B${CONFIG.WEEKLY.lastTimeLine}`
+  );
+  const dataRange = weeklySheet.getRange(
+    `C${CONFIG.WEEKLY.DATA_START_ROW}:P${CONFIG.WEEKLY.lastTimeLine}`
+  );
+
+  dateCell.load('values');
+  headerRange.load('values');
+  timeRange.load('values');
+  dataRange.load('values');
+  await context.sync();
+
+  // Build week label for filename
+  const dateStr = String(dateCell.values[0][0] || '');
+  const headerValues = headerRange.values[0];
+  const firstDay = headerValues[0];
+  const lastDay = headerValues[headerValues.length - 1];
+  const weekLabel = `${dateStr.replace(' ', '-')}_${firstDay}-${lastDay}`;
+  const filename = `Weekly_${weekLabel}.csv`;
+
+  // Build CSV header
+  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const headers = ['Time'];
+  for (let d = 0; d < CONFIG.WEEKLY.DAYS_IN_WEEK; d++) {
+    headers.push(`${days[d]}_Task`);
+    headers.push(`${days[d]}_Score`);
+  }
+  const lines = [headers.join(',')];
+
+  // Build CSV rows
+  for (let i = 0; i < timeRange.values.length; i++) {
+    const time = timeRange.values[i][0];
+    if (time === '' || time === null) continue;
+
+    const row = [escapeCSV(formatExcelTime(time))];
+
+    for (let d = 0; d < CONFIG.WEEKLY.DAYS_IN_WEEK; d++) {
+      const taskCol = d * 2;
+      const scoreCol = d * 2 + 1;
+      const task = dataRange.values[i][taskCol] || '';
+      const score = dataRange.values[i][scoreCol];
+      row.push(escapeCSV(String(task)));
+      row.push(score !== null && score !== '' ? score : '');
+    }
+    lines.push(row.join(','));
+  }
+
+  // Trailing newline matches the original output exactly.
+  const csv = lines.join('\n') + '\n';
+  return { csv, filename };
+}
+
+/**
+ * Format an Excel time-cell value as "HH:MM".
+ * Excel stores times either as a fraction of a day (0.645833 = 15:30)
+ * or as a string. Anything else is returned as-is via String().
+ *
+ * @param {number|string|*} time - Cell value
+ * @returns {string}
+ */
+function formatExcelTime(time) {
+  if (typeof time === 'number') {
+    const hours = Math.floor(time * 24);
+    const mins = Math.round((time * 24 - hours) * 60);
+    return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+  }
+  return String(time);
 }
 
 /**
