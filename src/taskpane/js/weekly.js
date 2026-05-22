@@ -192,12 +192,11 @@ async function setNewWeekDates(context, sheet) {
   const yearMonth = `${newMonday.getFullYear()} ${String(newMonday.getMonth() + 1).padStart(2, '0')}`;
   sheet.getRange('B4').values = [[yearMonth]];
 
-  // Set day numbers in D4, F4, H4, J4, L4, N4, P4 (columns 4,6,8,10,12,14,16)
+  // Set day numbers in D4, F4, H4, J4, L4, N4, P4
   for (let i = 0; i < CONFIG.WEEKLY.DAYS_IN_WEEK; i++) {
     const dayDate = new Date(newMonday);
     dayDate.setDate(newMonday.getDate() + i);
-    const col = i * 2 + 4; // 4,6,8,10,12,14,16
-    const colLetter = indexToColumnLetter(col - 1);
+    const colLetter = getScoreColLetterForDay(i);
     sheet.getRange(`${colLetter}4`).values = [[dayDate.getDate()]];
   }
 
@@ -251,10 +250,8 @@ async function clearForNewWeek(context) {
     for (let day = 0; day < CONFIG.WEEKLY.DAYS_IN_WEEK; day++) {
       const taskColOffset = day * 2;
       const scoreColOffset = day * 2 + 1;
-      const taskCol = day * 2 + 3;
-      const scoreCol = day * 2 + 4;
-      const taskColLetter = indexToColumnLetter(taskCol - 1);
-      const scoreColLetter = indexToColumnLetter(scoreCol - 1);
+      const taskColLetter = getTaskColLetterForDay(day);
+      const scoreColLetter = getScoreColLetterForDay(day);
 
       for (let i = 0; i < values.length; i++) {
         const scoreVal = values[i][scoreColOffset];
@@ -287,10 +284,8 @@ async function highlightCurrentDay(context, sheet) {
   sheet.getRange('A4:P4').format.fill.clear();
 
   // Highlight current day's task and score header columns
-  const taskCol = state.weekly.currentDayIndex * 2 + 3;  // 3,5,7,9,11,13,15
-  const scoreCol = state.weekly.currentDayIndex * 2 + 4; // 4,6,8,10,12,14,16
-  const taskColLetter = indexToColumnLetter(taskCol - 1);
-  const scoreColLetter = indexToColumnLetter(scoreCol - 1);
+  const taskColLetter = getTaskColLetterForDay(state.weekly.currentDayIndex);
+  const scoreColLetter = getScoreColLetterForDay(state.weekly.currentDayIndex);
 
   sheet.getRange(`${taskColLetter}4`).format.fill.color = CONFIG.COLORS.TODAY_HIGHLIGHT;
   sheet.getRange(`${scoreColLetter}4`).format.fill.color = CONFIG.COLORS.TODAY_HIGHLIGHT;
@@ -385,10 +380,8 @@ async function highlightCurrentTimeRow(context, sheet) {
       sheet.getRange(`B${row}`).format.fill.color = CONFIG.COLORS.CURRENT_TIME;
 
       // Check if current day's task/score cells are empty
-      const taskCol = state.weekly.currentDayIndex * 2 + 3;
-      const scoreCol = state.weekly.currentDayIndex * 2 + 4;
-      const taskColLetter = indexToColumnLetter(taskCol - 1);
-      const scoreColLetter = indexToColumnLetter(scoreCol - 1);
+      const taskColLetter = getTaskColLetterForDay(state.weekly.currentDayIndex);
+      const scoreColLetter = getScoreColLetterForDay(state.weekly.currentDayIndex);
 
       const scoreCell = sheet.getRange(`${scoreColLetter}${row}`);
       scoreCell.load('values');
@@ -579,8 +572,7 @@ async function randomPick(context) {
     }
 
     // Current day task column
-    const taskColumn = state.weekly.currentDayIndex * 2 + 3; // 3,5,7,9,11,13,15
-    const taskColLetter = indexToColumnLetter(taskColumn - 1);
+    const taskColLetter = getTaskColLetterForDay(state.weekly.currentDayIndex);
 
     // Get time column and task column
     const timeRange = weeklySheet.getRange(`B${CONFIG.WEEKLY.DATA_START_ROW}:B${CONFIG.WEEKLY.LAST_TIME_ROW}`);

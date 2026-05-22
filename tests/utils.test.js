@@ -7,6 +7,10 @@ import {
   getMonday,
   daysBetween,
   parseAddress,
+  getTaskColForDay,
+  getScoreColForDay,
+  getTaskColLetterForDay,
+  getScoreColLetterForDay,
 } from './harness.js';
 
 describe('utils.js - date helpers', () => {
@@ -84,5 +88,27 @@ describe('utils.js - parseAddress', () => {
 
   it('returns null on garbage', () => {
     expect(parseAddress('not-an-address')).toBeNull();
+  });
+});
+
+describe('utils.js - day/column helpers', () => {
+  it('getTaskColForDay returns the expected 1-based columns 3,5,7,9,11,13,15', () => {
+    expect([0, 1, 2, 3, 4, 5, 6].map(getTaskColForDay)).toEqual([3, 5, 7, 9, 11, 13, 15]);
+  });
+
+  it('getScoreColForDay returns the expected 1-based columns 4,6,8,10,12,14,16', () => {
+    expect([0, 1, 2, 3, 4, 5, 6].map(getScoreColForDay)).toEqual([4, 6, 8, 10, 12, 14, 16]);
+  });
+
+  it('getTaskColLetterForDay returns C,E,G,I,K,M,O', () => {
+    expect([0, 1, 2, 3, 4, 5, 6].map(getTaskColLetterForDay)).toEqual(
+      ['C', 'E', 'G', 'I', 'K', 'M', 'O']
+    );
+  });
+
+  it('getScoreColLetterForDay returns D,F,H,J,L,N,P', () => {
+    expect([0, 1, 2, 3, 4, 5, 6].map(getScoreColLetterForDay)).toEqual(
+      ['D', 'F', 'H', 'J', 'L', 'N', 'P']
+    );
   });
 });

@@ -17,6 +17,10 @@ export const indexToColumnLetter = globalThis.indexToColumnLetter;
 export const getMonday = globalThis.getMonday;
 export const daysBetween = globalThis.daysBetween;
 export const parseAddress = globalThis.parseAddress;
+export const getTaskColForDay = globalThis.getTaskColForDay;
+export const getScoreColForDay = globalThis.getScoreColForDay;
+export const getTaskColLetterForDay = globalThis.getTaskColLetterForDay;
+export const getScoreColLetterForDay = globalThis.getScoreColLetterForDay;
 
 // weekly.js
 export const buildWeeklyCSV = globalThis.buildWeeklyCSV;

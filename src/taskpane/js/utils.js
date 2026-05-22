@@ -97,6 +97,44 @@ function parseAddress(address) {
   };
 }
 
+/**
+ * Get the 1-based task column number for a given day index.
+ * Day 0 (Mon) = col 3 (C), Day 1 (Tue) = col 5 (E), ..., Day 6 (Sun) = col 15 (O).
+ * @param {number} dayIndex - 0 = Monday ... 6 = Sunday
+ * @returns {number} 1-based column index
+ */
+function getTaskColForDay(dayIndex) {
+  return dayIndex * 2 + 3;
+}
+
+/**
+ * Get the 1-based score column number for a given day index.
+ * Day 0 (Mon) = col 4 (D), Day 1 (Tue) = col 6 (F), ..., Day 6 (Sun) = col 16 (P).
+ * @param {number} dayIndex - 0 = Monday ... 6 = Sunday
+ * @returns {number} 1-based column index
+ */
+function getScoreColForDay(dayIndex) {
+  return dayIndex * 2 + 4;
+}
+
+/**
+ * Get the task column letter for a given day index (e.g. 0 -> 'C').
+ * @param {number} dayIndex - 0 = Monday ... 6 = Sunday
+ * @returns {string}
+ */
+function getTaskColLetterForDay(dayIndex) {
+  return indexToColumnLetter(getTaskColForDay(dayIndex) - 1);
+}
+
+/**
+ * Get the score column letter for a given day index (e.g. 0 -> 'D').
+ * @param {number} dayIndex - 0 = Monday ... 6 = Sunday
+ * @returns {string}
+ */
+function getScoreColLetterForDay(dayIndex) {
+  return indexToColumnLetter(getScoreColForDay(dayIndex) - 1);
+}
+
 // Export for use in other modules
 window.formatDateYYYYMMDD = formatDateYYYYMMDD;
 window.formatDateTime = formatDateTime;
@@ -105,3 +143,7 @@ window.indexToColumnLetter = indexToColumnLetter;
 window.getMonday = getMonday;
 window.daysBetween = daysBetween;
 window.parseAddress = parseAddress;
+window.getTaskColForDay = getTaskColForDay;
+window.getScoreColForDay = getScoreColForDay;
+window.getTaskColLetterForDay = getTaskColLetterForDay;
+window.getScoreColLetterForDay = getScoreColLetterForDay;
