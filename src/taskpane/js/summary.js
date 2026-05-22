@@ -102,7 +102,7 @@ async function updateSummary(context, positiveScore, negativeScore) {
  * Export Summary sheet data as CSV
  */
 async function exportSummaryData() {
-  try {
+  await withStatus('Export summary', async () => {
     showStatus('📊 Exporting summary...', 'info');
 
     let csvContent = '';
@@ -131,11 +131,7 @@ async function exportSummaryData() {
       downloadCSV(csvContent, `Summary_${today}.csv`);
       showStatus('📊 Summary exported!', 'success');
     }
-
-  } catch (error) {
-    console.error('Export summary error:', error);
-    showStatus('Error: ' + error.message, 'error');
-  }
+  });
 }
 
 // Export for use in other modules

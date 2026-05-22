@@ -79,18 +79,14 @@ async function addTask() {
     return;
   }
 
-  try {
+  await withStatus('Add task', async () => {
     await Excel.run(async (context) => {
       const result = await createTask(context, name, weight);
-
       if (nameInput) nameInput.value = '';
       if (weightInput) weightInput.value = '1';
-
       showStatus(`✅ Task "${result.name}" added!`, 'success');
     });
-  } catch (error) {
-    showStatus('Error: ' + error.message, 'error');
-  }
+  });
 }
 
 /**
@@ -259,3 +255,31 @@ window.promptSaveFile = promptSaveFile;
 window.remindToSave = remindToSave;
 window.showWarningPopup = showWarningPopup;
 window.showInfoPopup = showInfoPopup;
+
+/**
+ * Run an async function and surface failures through showStatus.
+ *
+ * Removes the repetitive
+ *   try { ... } catch (e) { showStatus('Error: ' + e.message, 'error') }
+ * boilerplate from public entry points. The wrapped function is
+ * responsible for emitting its own success status (if any) — this
+ * wrapper only handles the error path.
+ *
+ * @param {string} label - Short label used in the error message,
+ *   e.g. 'Sort habits'. The full error becomes
+ *   '{label} failed: {error.message}'.
+ * @param {() => Promise<T>} fn - Async function to run.
+ * @returns {Promise<T | undefined>} The fn return value, or
+ *   undefined if it threw.
+ */
+async function withStatus(label, fn) {
+  try {
+    return await fn();
+  } catch (e) {
+    console.error(`${label} failed:`, e);
+    showStatus(`${label} failed: ${e.message}`, 'error');
+    return undefined;
+  }
+}
+
+window.withStatus = withStatus;

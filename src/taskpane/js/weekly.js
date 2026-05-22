@@ -689,31 +689,17 @@ async function processWeeklyScoreChange(context, row, col, newScore) {
 }
 
 async function startNewWeekFromUI() {
-  try {
+  await withStatus('Start new week', async () => {
     showStatus('🗓️ Starting new week...', 'info');
-
     await Excel.run(async (context) => {
       const sheet = context.workbook.worksheets.getItem(CONFIG.WEEKLY_SHEET);
-
-      // Clear the weekly data
       await clearForNewWeek(context);
-
-      // Set new dates
       await setNewWeekDates(context, sheet);
-
-      // Highlight current day
       await highlightCurrentDay(context, sheet);
-
-      // Highlight current time
       await highlightCurrentTimeRow(context, sheet);
     });
-
     showStatus('✅ New week started! Remember to save a copy for archive.', 'success');
-
-  } catch (error) {
-    console.error('Start new week error:', error);
-    showStatus('Error: ' + error.message, 'error');
-  }
+  });
 }
 
 

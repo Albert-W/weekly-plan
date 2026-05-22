@@ -221,19 +221,15 @@ async function recordHabitDone(context, row) {
  * Sort habits by base score (descending)
  */
 async function sortHabits() {
-  try {
+  await withStatus('Sort habits', async () => {
     await Excel.run(async (context) => {
       const sheet = context.workbook.worksheets.getItem(CONFIG.HABITS_SHEET);
       const range = sheet.getRange(`A${CONFIG.HABITS.DATA_START_ROW}:R${state.habits.lastRow}`);
-
       range.sort.apply([{ key: 2, ascending: false }]);
       await context.sync();
-
       showStatus('Habits sorted by score!', 'success');
     });
-  } catch (error) {
-    showStatus('Error sorting: ' + error.message, 'error');
-  }
+  });
 }
 
 /**
@@ -243,7 +239,7 @@ async function sortHabits() {
  * refreshHabitsDatesWithContext.
  */
 async function refreshHabitsDates() {
-  try {
+  await withStatus('Refresh habit dates', async () => {
     let startDate;
     await Excel.run(async (context) => {
       const sheet = context.workbook.worksheets.getItem(CONFIG.HABITS_SHEET);
@@ -251,9 +247,7 @@ async function refreshHabitsDates() {
       state.habits.currentDayIndex = await findHabitsDayIndex(context, sheet);
     });
     showStatus('Dates refreshed! Starting ' + startDate.toDateString(), 'success');
-  } catch (error) {
-    showStatus('Error: ' + error.message, 'error');
-  }
+  });
 }
 
 // Export for use in other modules

@@ -248,28 +248,15 @@ function showArchiveInstructions() {
  * This exports data as CSV, then clears for new week
  */
 async function archiveAndStartNewWeek() {
-  try {
+  await withStatus('Archive week', async () => {
     showStatus('📦 Archiving week data...', 'info');
-
-    // Step 1: Export current week data
     const weekData = await exportWeekData();
-
     if (weekData) {
-      // Step 2: Download as CSV
       downloadCSV(weekData.csv, weekData.filename);
-
-      // Step 3: Show instructions for OneDrive copy
       showArchiveInstructions();
     }
-
-    // Step 4: Ask user to confirm before clearing
-    // (In a real scenario, you'd use a dialog, but for simplicity we'll proceed)
     showStatus('📥 Week archived! Click "Start New Week" to clear data.', 'success');
-
-  } catch (error) {
-    console.error('Archive error:', error);
-    showStatus('Error archiving: ' + error.message, 'error');
-  }
+  });
 }
 
 /**
@@ -336,24 +323,19 @@ async function exportSheetAsCSV(sheetName) {
  * This exports Weekly, Goals, and Charter sheets
  */
 async function exportWeeklyAsXLS() {
-  try {
+  await withStatus('Export all sheets', async () => {
     showStatus('📊 Exporting all sheets...', 'info');
 
     let weekLabel = '';
 
     await Excel.run(async (context) => {
       const weeklySheet = context.workbook.worksheets.getItem(CONFIG.WEEKLY_SHEET);
-
-      // Get date info for filename
       const dateCell = weeklySheet.getRange('B4');
       dateCell.load('values');
-
       const headerRange = weeklySheet.getRange('D4:P4');
       headerRange.load('values');
-
       await context.sync();
 
-      // Build week label for filename
       const dateStr = String(dateCell.values[0][0] || '').trim();
       if (dateStr && headerRange.values[0].length > 0) {
         const firstDay = headerRange.values[0][0];
@@ -364,7 +346,6 @@ async function exportWeeklyAsXLS() {
       }
     });
 
-    // Export each sheet
     const sheetsToExport = [
       { name: CONFIG.WEEKLY_SHEET, prefix: 'Weekly' },
       { name: CONFIG.GOALS_SHEET, prefix: 'Goals' },
@@ -372,7 +353,6 @@ async function exportWeeklyAsXLS() {
     ];
 
     let exportedCount = 0;
-
     for (const sheetInfo of sheetsToExport) {
       const csvContent = await exportSheetAsCSV(sheetInfo.name);
       if (csvContent) {
@@ -389,11 +369,7 @@ async function exportWeeklyAsXLS() {
     } else {
       showStatus('No sheets found to export.', 'warning');
     }
-
-  } catch (error) {
-    console.error('Export error:', error);
-    showStatus('Error: ' + error.message, 'error');
-  }
+  });
 }
 
 /**
