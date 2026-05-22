@@ -6,19 +6,32 @@
  */
 
 /**
- * Initialize Weekly/Timetable sheet data
+ * Initialize Weekly/Timetable sheet data.
+ * Detects the grid extent (last time row + score totals row) from
+ * the actual sheet so the layout can change without code edits.
+ *
+ * Fallback: if detection fails or returns nothing usable, keep the
+ * CONFIG defaults already on state.weekly.
+ *
  * @param {Excel.RequestContext} context - Excel context
  */
 async function initializeWeeklySheet(context) {
   const sheet = context.workbook.worksheets.getItem(CONFIG.WEEKLY_SHEET);
 
-  // Find last row with time data (Column B)
+  // Discover last populated row of column B (the time-labels column).
+  // We load both rowIndex (0-based start of the used range) and
+  // rowCount (its height); their sum is the last 1-based row.
   const timeColumn = sheet.getRange('B:B').getUsedRange();
-  timeColumn.load('rowCount');
+  timeColumn.load(['rowIndex', 'rowCount']);
   await context.sync();
 
-  // Using fixed values from CONFIG instead of dynamic calculation
-  // CONFIG.WEEKLY.LAST_TIME_ROW = 36, CONFIG.WEEKLY.SCORE_ROW = 38
+  const detectedLastTimeRow = (timeColumn.rowIndex || 0) + (timeColumn.rowCount || 0);
+  if (detectedLastTimeRow >= CONFIG.WEEKLY.DATA_START_ROW) {
+    state.weekly.lastTimeRow = detectedLastTimeRow;
+    // The score totals row sits one blank row below the last time row.
+    // Preserve the legacy 36 -> 38 relationship via the +2 offset.
+    state.weekly.scoreRow = detectedLastTimeRow + 2;
+  }
 
   // Calculate current day index (0=Mon, 6=Sun)
   const today = new Date();
@@ -170,15 +183,15 @@ async function clearForNewWeek(context) {
   try {
     const sheet = context.workbook.worksheets.getItem(CONFIG.WEEKLY_SHEET);
     const dataStart = CONFIG.WEEKLY.DATA_START_ROW;
-    const dataEnd = CONFIG.WEEKLY.SCORE_ROW - 1;
+    const dataEnd = state.weekly.scoreRow - 1;
 
     // ----------------------------------------------------------------
     // 1. Queue unconditional clears + the bulk read, then sync ONCE.
     //    All of these ride on the same round-trip as the values read.
     // ----------------------------------------------------------------
-    sheet.getRange(`C5:Z${CONFIG.WEEKLY.SCORE_ROW}`).format.fill.clear();
+    sheet.getRange(`C5:Z${state.weekly.scoreRow}`).format.fill.clear();
     sheet
-      .getRange(`C${CONFIG.WEEKLY.SCORE_ROW}:P${CONFIG.WEEKLY.SCORE_ROW}`)
+      .getRange(`C${state.weekly.scoreRow}:P${state.weekly.scoreRow}`)
       .clear(Excel.ClearApplyTo.contents);
 
     const dataRange = sheet.getRange(`C${dataStart}:P${dataEnd}`);
@@ -247,7 +260,7 @@ async function highlightCurrentDay(context, sheet) {
 async function highlightCurrentTimeRow(context, sheet) {
   try {
     // Clear previous time highlighting
-    sheet.getRange('B5:B' + CONFIG.WEEKLY.LAST_TIME_ROW).format.fill.clear();
+    sheet.getRange('B5:B' + state.weekly.lastTimeRow).format.fill.clear();
 
     // Get current time as decimal (e.g., 15.75 for 15:45)
     const now = new Date();
@@ -257,10 +270,10 @@ async function highlightCurrentTimeRow(context, sheet) {
 
     console.log('=== HIGHLIGHT TIME DEBUG ===');
     console.log('Current time:', currentHour + ':' + currentMinutes, '= decimal:', currentTimeDecimal);
-    console.log('Looking in rows', CONFIG.WEEKLY.DATA_START_ROW, 'to', CONFIG.WEEKLY.LAST_TIME_ROW);
+    console.log('Looking in rows', CONFIG.WEEKLY.DATA_START_ROW, 'to', state.weekly.lastTimeRow);
 
     // Get time column values
-    const timeRange = sheet.getRange(`B${CONFIG.WEEKLY.DATA_START_ROW}:B${CONFIG.WEEKLY.LAST_TIME_ROW}`);
+    const timeRange = sheet.getRange(`B${CONFIG.WEEKLY.DATA_START_ROW}:B${state.weekly.lastTimeRow}`);
     timeRange.load('values');
     await context.sync();
 
@@ -455,14 +468,14 @@ async function handleWeeklySelection(context, address, column, colIndex, row) {
 
   // Task column selection (odd columns 3-15, rows 5+)
   if (CONFIG.WEEKLY.TASK_COLUMNS.includes(colIndex) &&
-      row >= CONFIG.WEEKLY.DATA_START_ROW && row <= CONFIG.WEEKLY.LAST_TIME_ROW) {
+      row >= CONFIG.WEEKLY.DATA_START_ROW && row <= state.weekly.lastTimeRow) {
     showStatus('Select a task from the dropdown, or use Add Task to create new.', 'info');
     return;
   }
 
   // Score column selection (even columns 4-16, rows 5+)
   if (CONFIG.WEEKLY.SCORE_COLUMNS.includes(colIndex) &&
-      row >= CONFIG.WEEKLY.DATA_START_ROW && row < CONFIG.WEEKLY.SCORE_ROW) {
+      row >= CONFIG.WEEKLY.DATA_START_ROW && row < state.weekly.scoreRow) {
 
     // Check if task is selected first
     const taskCell = sheet.getRange(address).getOffsetRange(0, -1);
@@ -519,8 +532,8 @@ async function randomPick(context) {
     const taskColLetter = getTaskColLetterForDay(state.weekly.currentDayIndex);
 
     // Get time column and task column
-    const timeRange = weeklySheet.getRange(`B${CONFIG.WEEKLY.DATA_START_ROW}:B${CONFIG.WEEKLY.LAST_TIME_ROW}`);
-    const taskRange = weeklySheet.getRange(`${taskColLetter}${CONFIG.WEEKLY.DATA_START_ROW}:${taskColLetter}${CONFIG.WEEKLY.LAST_TIME_ROW}`);
+    const timeRange = weeklySheet.getRange(`B${CONFIG.WEEKLY.DATA_START_ROW}:B${state.weekly.lastTimeRow}`);
+    const taskRange = weeklySheet.getRange(`${taskColLetter}${CONFIG.WEEKLY.DATA_START_ROW}:${taskColLetter}${state.weekly.lastTimeRow}`);
 
     timeRange.load('values');
     taskRange.load('values');
@@ -582,7 +595,7 @@ async function processWeeklyScoreChange(context, row, col, newScore) {
   const taskCell = weeklySheet.getRange(`${taskColLetter}${row}`);
   const scoreCell = weeklySheet.getRange(`${scoreColLetter}${row}`);
   const dailyTotalCell = weeklySheet.getRange(
-    `${scoreColLetter}${CONFIG.WEEKLY.SCORE_ROW}`
+    `${scoreColLetter}${state.weekly.scoreRow}`
   );
   const tasksNames = tasksSheet.getRange(`A${CONFIG.TASKS.DATA_START_ROW}:A${state.weekly.lastTaskRow}`);
   const tasksWeights = tasksSheet.getRange(`B${CONFIG.TASKS.DATA_START_ROW}:B${state.weekly.lastTaskRow}`);
@@ -750,7 +763,7 @@ async function handleWeeklyCellChange(context, address, colIndex, row) {
   if (
     CONFIG.WEEKLY.SCORE_COLUMNS.includes(colIndex) &&
     row >= CONFIG.WEEKLY.DATA_START_ROW &&
-    row <= CONFIG.WEEKLY.LAST_TIME_ROW
+    row <= state.weekly.lastTimeRow
   ) {
     const sheet = context.workbook.worksheets.getItem(CONFIG.WEEKLY_SHEET);
     const scoreCell = sheet.getRange(address);

@@ -127,10 +127,10 @@ async function buildWeeklyCSV(context) {
   const dateCell = weeklySheet.getRange(CONFIG.WEEKLY.DATE_CELL);
   const headerRange = weeklySheet.getRange(CONFIG.WEEKLY.HEADER_RANGE);
   const timeRange = weeklySheet.getRange(
-    `B${CONFIG.WEEKLY.DATA_START_ROW}:B${CONFIG.WEEKLY.LAST_TIME_ROW}`
+    `B${CONFIG.WEEKLY.DATA_START_ROW}:B${state.weekly.lastTimeRow}`
   );
   const dataRange = weeklySheet.getRange(
-    `C${CONFIG.WEEKLY.DATA_START_ROW}:P${CONFIG.WEEKLY.LAST_TIME_ROW}`
+    `C${CONFIG.WEEKLY.DATA_START_ROW}:P${state.weekly.lastTimeRow}`
   );
 
   dateCell.load('values');

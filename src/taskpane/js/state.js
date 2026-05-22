@@ -21,7 +21,12 @@ const state = {
     lastMonday: null,
     lastTaskRow: 4,         // Last row in Tasks sheet
     lastSummaryRow: 1,      // Last row in Summary sheet
-    lastInitDate: null      // Track last initialization date (YYYY-MM-DD)
+    lastInitDate: null,     // Track last initialization date (YYYY-MM-DD)
+    // Grid extent. Initialized from CONFIG defaults and overwritten
+    // by initializeWeeklySheet once we know what the actual sheet
+    // looks like (task #9 — sheet-driven layout).
+    lastTimeRow: CONFIG.WEEKLY.LAST_TIME_ROW,
+    scoreRow: CONFIG.WEEKLY.SCORE_ROW
   },
 
   // Event handlers

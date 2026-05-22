@@ -446,6 +446,10 @@ function createContext(workbook) {
           : 0;
         r.rowCount = rows;
       }
+      if (r._loaded.has('rowIndex')) {
+        // 0-based row index of the start of the range.
+        r.rowIndex = r._parsed.startRow !== null ? r._parsed.startRow - 1 : 0;
+      }
     }
     ctx._pendingReads.length = 0;
 
