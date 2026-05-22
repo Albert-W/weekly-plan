@@ -54,10 +54,17 @@ async function highlightCurrentDateHeader(context, sheet) {
 }
 
 /**
- * Refresh dates for Habits sheet using existing context
- * Sets up a new 14-day window starting from Monday
+ * Refresh dates for Habits sheet using an existing context.
+ * Sets B3 = "yyyy mm", D3:Q3 = day numbers for the 14-day window
+ * starting at the Monday of `today`, and clears any prior data.
+ *
+ * Single source of truth for the date-refresh logic. Callers that
+ * already own an Excel.RequestContext call this directly; the
+ * public refreshHabitsDates() below wraps it in Excel.run.
+ *
  * @param {Excel.RequestContext} context - Excel context
  * @param {Excel.Worksheet} sheet - Habits sheet
+ * @returns {Promise<Date>} The Monday the window starts from
  */
 async function refreshHabitsDatesWithContext(context, sheet) {
   const today = new Date();
@@ -83,6 +90,7 @@ async function refreshHabitsDatesWithContext(context, sheet) {
 
   await context.sync();
   console.log('Dates refreshed! Starting ' + startDate.toDateString());
+  return startDate;
 }
 
 /**
@@ -229,41 +237,20 @@ async function sortHabits() {
 }
 
 /**
- * Refresh dates for Habits sheet
- * Sets up a new 14-day window starting from Monday
+ * Refresh dates for Habits sheet (public, user-facing entry point).
+ * Thin wrapper that owns Excel.run and updates the current-day
+ * index + status. All sheet work lives in
+ * refreshHabitsDatesWithContext.
  */
 async function refreshHabitsDates() {
   try {
+    let startDate;
     await Excel.run(async (context) => {
       const sheet = context.workbook.worksheets.getItem(CONFIG.HABITS_SHEET);
-
-      const today = new Date();
-      const startDate = getMonday(today);
-
-      // Set year/month in B3
-      const yearMonth = `${startDate.getFullYear()} ${String(startDate.getMonth() + 1).padStart(2, '0')}`;
-      sheet.getRange('B3').values = [[yearMonth]];
-
-      // Set day numbers in header row
-      const days = [];
-      for (let i = 0; i < CONFIG.HABITS.DAYS_COUNT; i++) {
-        const d = new Date(startDate);
-        d.setDate(startDate.getDate() + i);
-        days.push(d.getDate());
-      }
-      sheet.getRange('D3:Q3').values = [days];
-
-      // Clear data area
-      if (state.habits.lastRow >= CONFIG.HABITS.DATA_START_ROW) {
-        sheet.getRange(`D${CONFIG.HABITS.DATA_START_ROW}:Q${state.habits.lastRow}`).clear(Excel.ClearApplyTo.contents);
-      }
-
-      await context.sync();
-
-      // Update current day index
+      startDate = await refreshHabitsDatesWithContext(context, sheet);
       state.habits.currentDayIndex = await findHabitsDayIndex(context, sheet);
-      showStatus('Dates refreshed! Starting ' + startDate.toDateString(), 'success');
     });
+    showStatus('Dates refreshed! Starting ' + startDate.toDateString(), 'success');
   } catch (error) {
     showStatus('Error: ' + error.message, 'error');
   }
