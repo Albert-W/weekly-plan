@@ -200,7 +200,9 @@ function createRange(sheet, addr, ctx, parsedOverride = null) {
     const newAddr = newParsed.startCol === newParsed.endCol && newParsed.startRow === newParsed.endRow
       ? cellAddr(newParsed.startCol, newParsed.startRow)
       : `${cellAddr(newParsed.startCol, newParsed.startRow)}:${cellAddr(newParsed.endCol, newParsed.endRow)}`;
-    return createRange(sheet, newAddr, ctx, newParsed);
+    const r = createRange(sheet, newAddr, ctx, newParsed);
+    attachValuesSetter(r, ctx);
+    return r;
   };
 
   range.getUsedRange = function getUsedRange() {
@@ -217,18 +219,21 @@ function createRange(sheet, addr, ctx, parsedOverride = null) {
         isWholeColumn: false,
       });
       empty._isEmptyUsed = true;
+      attachValuesSetter(empty, ctx);
       return empty;
     }
     const startCol = parsed.isWholeColumn ? parsed.startCol : ext.minCol;
     const endCol = parsed.isWholeColumn ? parsed.endCol : ext.maxCol;
     const newAddr = `${cellAddr(startCol, ext.minRow)}:${cellAddr(endCol, ext.maxRow)}`;
-    return createRange(sheet, newAddr, ctx, {
+    const r = createRange(sheet, newAddr, ctx, {
       startCol,
       startRow: ext.minRow,
       endCol,
       endRow: ext.maxRow,
       isWholeColumn: false,
     });
+    attachValuesSetter(r, ctx);
+    return r;
   };
 
   // Value getter via property descriptor so writes to `.values = [[x]]`

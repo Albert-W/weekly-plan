@@ -29,6 +29,8 @@ export const escapeCSV = globalThis.escapeCSV;
 export const processWeeklyScoreChange = globalThis.processWeeklyScoreChange;
 export const clearForNewWeek = globalThis.clearForNewWeek;
 export const updateSummary = globalThis.updateSummary;
+export const handleWeeklySelection = globalThis.handleWeeklySelection;
+export const exportSheetAsCSV = globalThis.exportSheetAsCSV;
 
 // habits.js
 export const recordHabitDone = globalThis.recordHabitDone;
