@@ -147,6 +147,10 @@ async function initializeAddin() {
     updateUI();
     showStatus('Ready! Sheet: ' + state.currentSheet, 'success');
 
+    // Start the background ticker so the time-row highlight follows
+    // the real clock instead of only updating on user actions.
+    startTimeHighlightTicker();
+
   } catch (error) {
     console.error('Initialization error:', error);
     console.error('Error stack:', error.stack);

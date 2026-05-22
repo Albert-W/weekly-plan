@@ -413,10 +413,12 @@ async function highlightCurrentTimeRow(context, sheet) {
 }
 
 /**
- * Refresh current time highlighting
- * Call this periodically or on demand
+ * Refresh current time highlighting.
+ * @param {Object} [opts]
+ * @param {boolean} [opts.silent=false] - When true, suppress the status banner.
+ *   Used by the auto-tick so the user isn't pinged every minute.
  */
-async function refreshTimeHighlight() {
+async function refreshTimeHighlight({ silent = false } = {}) {
   try {
     await Excel.run(async (context) => {
       const sheet = context.workbook.worksheets.getItemOrNullObject(CONFIG.WEEKLY_SHEET);
@@ -426,9 +428,58 @@ async function refreshTimeHighlight() {
         await highlightCurrentTimeRow(context, sheet);
       }
     });
-    showStatus('Time highlight refreshed!', 'success');
+    if (!silent) showStatus('Time highlight refreshed!', 'success');
   } catch (error) {
-    showStatus('Error refreshing time: ' + error.message, 'error');
+    if (!silent) showStatus('Error refreshing time: ' + error.message, 'error');
+    else console.error('Time highlight tick error:', error);
+  }
+}
+
+// ----------------------------------------------------------------------
+// Background ticker: keep the highlighted time row in sync with the
+// real clock so the user sees the highlight move when each new minute
+// (and therefore each new time slot) begins. Only does Excel work when
+// the user is currently on the Weekly sheet.
+// ----------------------------------------------------------------------
+
+let _timeHighlightTimerId = null;
+let _timeHighlightAlignTimeoutId = null;
+
+/**
+ * Run one tick of the auto-highlight. Exported for testing.
+ */
+async function tickTimeHighlight() {
+  if (state.currentSheet !== CONFIG.WEEKLY_SHEET) return;
+  await refreshTimeHighlight({ silent: true });
+}
+
+/**
+ * Start the background ticker. Idempotent — safe to call multiple
+ * times. Aligns to the next minute boundary so the highlight flips
+ * shortly after the clock minute changes, then runs every 60s.
+ */
+function startTimeHighlightTicker() {
+  if (_timeHighlightTimerId || _timeHighlightAlignTimeoutId) return;
+  const now = new Date();
+  const msUntilNextMinute = (60 - now.getSeconds()) * 1000 - now.getMilliseconds();
+  _timeHighlightAlignTimeoutId = setTimeout(() => {
+    _timeHighlightAlignTimeoutId = null;
+    tickTimeHighlight();
+    _timeHighlightTimerId = setInterval(tickTimeHighlight, 60_000);
+  }, msUntilNextMinute);
+}
+
+/**
+ * Stop the background ticker (used for cleanup / tests).
+ */
+function stopTimeHighlightTicker() {
+  if (_timeHighlightAlignTimeoutId) {
+    clearTimeout(_timeHighlightAlignTimeoutId);
+    _timeHighlightAlignTimeoutId = null;
+  }
+  if (_timeHighlightTimerId) {
+    clearInterval(_timeHighlightTimerId);
+    _timeHighlightTimerId = null;
   }
 }
 
@@ -1201,3 +1252,6 @@ window.downloadXLSX = downloadXLSX;
 window.buildWeeklyCSV = buildWeeklyCSV;
 window.formatExcelTime = formatExcelTime;
 window.escapeCSV = escapeCSV;
+window.tickTimeHighlight = tickTimeHighlight;
+window.startTimeHighlightTicker = startTimeHighlightTicker;
+window.stopTimeHighlightTicker = stopTimeHighlightTicker;
