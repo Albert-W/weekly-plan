@@ -617,7 +617,12 @@ async function randomPick(context) {
 
 /**
  * Process score change on Weekly sheet
- * Equivalent to VBA Worksheet_Change
+ * Equivalent to VBA Worksheet_Change.
+ *
+ * Performance: batches Tasks-sheet lookups into a single
+ * context.sync() instead of one round-trip per lookup, so total
+ * syncs are constant (2) regardless of how many tasks exist.
+ *
  * @param {Excel.RequestContext} context - Excel context
  * @param {number} row - Row number
  * @param {number} col - Column number (1-based)
@@ -627,107 +632,121 @@ async function processWeeklyScoreChange(context, row, col, newScore) {
   const weeklySheet = context.workbook.worksheets.getItem(CONFIG.WEEKLY_SHEET);
   const tasksSheet = context.workbook.worksheets.getItem(CONFIG.TASKS_SHEET);
 
-  // Get task name from adjacent cell
   const taskColLetter = indexToColumnLetter(col - 2);
+  const scoreColLetter = indexToColumnLetter(col - 1);
+
+  // ------------------------------------------------------------------
+  // 1. Queue every read we need, then sync ONCE.
+  //    Loading whole columns (A, B, F, G) costs the same round-trip as
+  //    loading any single cell, but lets us resolve the task in memory.
+  // ------------------------------------------------------------------
   const taskCell = weeklySheet.getRange(`${taskColLetter}${row}`);
+  const scoreCell = weeklySheet.getRange(`${scoreColLetter}${row}`);
+  const dailyTotalCell = weeklySheet.getRange(
+    `${scoreColLetter}${CONFIG.WEEKLY.scoreLine}`
+  );
+  const tasksNames = tasksSheet.getRange(`A4:A${state.weekly.taskl}`);
+  const tasksWeights = tasksSheet.getRange(`B4:B${state.weekly.taskl}`);
+  const tasksCounts = tasksSheet.getRange(`F4:F${state.weekly.taskl}`);
+  const tasksScores = tasksSheet.getRange(`G4:G${state.weekly.taskl}`);
+
   taskCell.load('values');
+  dailyTotalCell.load('values');
+  tasksNames.load('values');
+  tasksWeights.load('values');
+  tasksCounts.load('values');
+  tasksScores.load('values');
   await context.sync();
 
   const taskName = taskCell.values[0][0];
   if (!taskName) return;
 
-  // Calculate target day
-  const dayIndex = Math.floor((col - 4) / 2);
-  const targetDay = new Date(state.weekly.lastMonday);
-  targetDay.setDate(state.weekly.lastMonday.getDate() + dayIndex);
-
-  // Find task in Tasks sheet
-  const tasksRange = tasksSheet.getRange(`A4:A${state.weekly.taskl}`);
-  tasksRange.load('values');
-  await context.sync();
-
-  let taskIndex = -1;
+  // ------------------------------------------------------------------
+  // 2. Resolve task in memory (no Excel calls).
+  // ------------------------------------------------------------------
+  let taskIndex = -1;     // 1-based row in Tasks sheet
   let othersIndex = -1;
-  let taskWeight = 1;
-
-  for (let i = 0; i < tasksRange.values.length; i++) {
-    if (tasksRange.values[i][0] === taskName) {
+  for (let i = 0; i < tasksNames.values.length; i++) {
+    const name = tasksNames.values[i][0];
+    if (name === taskName) {
       taskIndex = i + 4;
-      const weightCell = tasksSheet.getRange(`B${taskIndex}`);
-      weightCell.load('values');
-      await context.sync();
-      taskWeight = parseFloat(weightCell.values[0][0]) || 1;
       break;
     }
-    if (tasksRange.values[i][0] === 'others') {
+    if (name === 'others') {
       othersIndex = i + 4;
     }
   }
 
-  // If task not found, use "others"
-  if (taskIndex === -1) {
-    if (othersIndex !== -1) {
-      taskIndex = othersIndex;
-      const weightCell = tasksSheet.getRange(`B${taskIndex}`);
-      weightCell.load('values');
-      await context.sync();
-      taskWeight = parseFloat(weightCell.values[0][0]) || 1;
-    } else {
-      // Create "others"
-      taskIndex = state.weekly.taskl + 1;
-      tasksSheet.getRange(`A${taskIndex}`).values = [['others']];
-      tasksSheet.getRange(`B${taskIndex}`).values = [[1]];
-      tasksSheet.getRange(`C${taskIndex}`).values = [[formatDateTime(new Date())]];
-      state.weekly.taskl = taskIndex;
-    }
-  }
-
-  // Calculate weighted score
-  const weightedScore = taskWeight * newScore;
-
-  // Apply colors to the individual score cell
-  const scoreColLetter = indexToColumnLetter(col - 1);
-  const scoreCell = weeklySheet.getRange(`${scoreColLetter}${row}`);
-
-  let color;
-  if (weightedScore > 0) {
-    color = CONFIG.COLORS.POSITIVE;
-  } else if (weightedScore < 0) {
-    color = CONFIG.COLORS.NEGATIVE;
+  let isNewTask = false;
+  let lookupIndex; // 0-based index into the loaded arrays
+  if (taskIndex !== -1) {
+    lookupIndex = taskIndex - 4;
+  } else if (othersIndex !== -1) {
+    taskIndex = othersIndex;
+    lookupIndex = othersIndex - 4;
   } else {
-    color = CONFIG.COLORS.NEUTRAL;
+    taskIndex = state.weekly.taskl + 1;
+    lookupIndex = -1;
+    isNewTask = true;
   }
 
+  const taskWeight = isNewTask
+    ? 1
+    : parseFloat(tasksWeights.values[lookupIndex][0]) || 1;
+  const currentCount = isNewTask
+    ? 0
+    : parseInt(tasksCounts.values[lookupIndex][0]) || 0;
+  const currentTaskScore = isNewTask
+    ? 0
+    : parseFloat(tasksScores.values[lookupIndex][0]) || 0;
+
+  const weightedScore = taskWeight * newScore;
+  const currentDailyTotal = parseFloat(dailyTotalCell.values[0][0]) || 0;
+  const newDailyTotal = currentDailyTotal + weightedScore;
+
+  const color =
+    weightedScore > 0 ? CONFIG.COLORS.POSITIVE :
+    weightedScore < 0 ? CONFIG.COLORS.NEGATIVE :
+    CONFIG.COLORS.NEUTRAL;
+
+  const now = formatDateTime(new Date());
+
+  // ------------------------------------------------------------------
+  // 3. Queue every write, then sync ONCE.
+  // ------------------------------------------------------------------
   scoreCell.format.fill.color = color;
   taskCell.format.fill.color = color;
+  dailyTotalCell.values = [[newDailyTotal]];
 
-  // Update the daily total in scoreLine row (row 38)
-  // The score column for this day is the same as the individual score column
-  const dailyTotalCell = weeklySheet.getRange(`${scoreColLetter}${CONFIG.WEEKLY.scoreLine}`);
-  dailyTotalCell.load('values');
-  await context.sync();
-
-  const currentDailyTotal = parseFloat(dailyTotalCell.values[0][0]) || 0;
-  dailyTotalCell.values = [[currentDailyTotal + weightedScore]];
-
-  // Update summary sheet
-  await updateSummary(context, weightedScore > 0 ? weightedScore : 0, weightedScore < 0 ? weightedScore : 0);
-
-  // Update task statistics in Tasks sheet
-  tasksSheet.getRange(`D${taskIndex}`).values = [[formatDateTime(new Date())]];
-
-  const countCell = tasksSheet.getRange(`F${taskIndex}`);
-  const taskScoreCell = tasksSheet.getRange(`G${taskIndex}`);
-  countCell.load('values');
-  taskScoreCell.load('values');
-  await context.sync();
-
-  countCell.values = [[(parseInt(countCell.values[0][0]) || 0) + 1]];
-  taskScoreCell.values = [[(parseFloat(taskScoreCell.values[0][0]) || 0) + weightedScore]];
+  if (isNewTask) {
+    // First-ever auto-creation of "others": populate every stat column
+    // so the row is fully consistent.
+    tasksSheet.getRange(`A${taskIndex}`).values = [['others']];
+    tasksSheet.getRange(`B${taskIndex}`).values = [[1]];
+    tasksSheet.getRange(`C${taskIndex}`).values = [[now]];
+    tasksSheet.getRange(`D${taskIndex}`).values = [[now]];
+    tasksSheet.getRange(`F${taskIndex}`).values = [[1]];
+    tasksSheet.getRange(`G${taskIndex}`).values = [[weightedScore]];
+    state.weekly.taskl = taskIndex;
+  } else {
+    tasksSheet.getRange(`D${taskIndex}`).values = [[now]];
+    tasksSheet.getRange(`F${taskIndex}`).values = [[currentCount + 1]];
+    tasksSheet.getRange(`G${taskIndex}`).values = [[currentTaskScore + weightedScore]];
+  }
 
   await context.sync();
 
-  showStatus(`📝 "${taskName}" scored: ${weightedScore.toFixed(2)} (Daily: ${(currentDailyTotal + weightedScore).toFixed(2)})`, 'success');
+  // Update summary sheet (owns its own sync calls)
+  await updateSummary(
+    context,
+    weightedScore > 0 ? weightedScore : 0,
+    weightedScore < 0 ? weightedScore : 0
+  );
+
+  showStatus(
+    `📝 "${taskName}" scored: ${weightedScore.toFixed(2)} (Daily: ${newDailyTotal.toFixed(2)})`,
+    'success'
+  );
 }
 
 /**
