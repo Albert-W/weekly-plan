@@ -1,0 +1,14 @@
+{
+  "name": "weekly-plan",
+  "version": "1.0.0",
+  "description": "Weekly Plan Excel Add-in",
+  "private": true,
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "jsdom": "^25.0.0",
+    "vitest": "^2.1.0"
+  }
+}

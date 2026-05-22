@@ -138,10 +138,12 @@ const CONFIG = {
 
 ```bash
 cd /Users/yichangwu/Documents/weekly-plan/src/taskpane
-npx http-server -c-1 -p 3000 --cors -S \
+npx http-server -a :: -c-1 -p 3000 --cors -S \
   -C ~/.office-addin-dev-certs/localhost.crt \
   -K ~/.office-addin-dev-certs/localhost.key
 ```
+
+The `-a ::` flag makes the server bind to IPv6 (and accept IPv4 via dual-stack) so Chrome's "IPv6 first" lookup of `localhost` doesn't fail.
 
 ### 2. Load the add-in in Excel Online
 
@@ -155,6 +157,27 @@ npx http-server -c-1 -p 3000 --cors -S \
 - Edit any JS file → Save
 - Refresh browser (F5)
 - Changes appear instantly! ✨
+
+## Running Tests
+
+The project ships with a Vitest-based test suite that protects the refactor backlog. Tests run in a jsdom environment against a small in-memory fake of the Office.js Excel object model — no Excel install required.
+
+```bash
+npm install        # one-time: installs vitest + jsdom
+npm test           # run the suite once
+npm run test:watch # re-run on file changes
+```
+
+What's covered:
+
+- **Pure helpers** — date math, column math, CSV escaping, time formatting.
+- **buildWeeklyCSV** — header layout, time formatting, blank-row skipping, filename format.
+- **recordHabitDone** — streak counting, weighted-score formula, count increments, perf guard (≤3 syncs).
+- **processWeeklyScoreChange** — task lookup, weight application, `others` fallback, first-time `others` row creation, color rules, perf guard.
+- **clearForNewWeek** — clears scored rows only, preserves unscored task-only rows, resets background fill and totals row, perf guard (exactly 2 syncs).
+- **registerOnChangedEvent** — handler de-duplication (regression guard for the bug fixed in commit `5fbca1b`).
+
+The plan that drove this is at `~/.llms/plans/weekly_plan_testing.plan.md`.
 
 ## Key Features Explained
 

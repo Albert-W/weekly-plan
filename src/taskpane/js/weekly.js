@@ -1198,3 +1198,6 @@ window.exportSummaryData = exportSummaryData;
 window.exportWeeklyAsXLS = exportWeeklyAsXLS;
 window.downloadCSV = downloadCSV;
 window.downloadXLSX = downloadXLSX;
+window.buildWeeklyCSV = buildWeeklyCSV;
+window.formatExcelTime = formatExcelTime;
+window.escapeCSV = escapeCSV;
