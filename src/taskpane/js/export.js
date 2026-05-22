@@ -55,11 +55,41 @@ function escapeCSV(value) {
  */
 
 /**
- * Download a string as a CSV file
+ * Download a string as a CSV file.
+ *
+ * Browser path: Excel Online runs the task pane in a normal browser
+ * iframe, so the standard <a download> trick works and saves the file
+ * to the user's Downloads folder.
+ *
+ * Excel Desktop path: the task pane is a sandboxed webview that
+ * blocks the implicit save dialog, so the click() silently no-ops.
+ * Instead we copy the CSV to the clipboard (when available) and
+ * surface a clear status message so the user knows what happened.
+ *
  * @param {string} content - CSV content
- * @param {string} filename - Filename for download
+ * @param {string} filename - Filename for the download
+ * @returns {boolean} true if a real download was attempted; false on
+ *   the Desktop fallback path.
  */
 function downloadCSV(content, filename) {
+  if (!isExcelOnline()) {
+    let copied = false;
+    if (typeof navigator !== 'undefined' &&
+        navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(content).then(
+        () => { /* ok */ },
+        (err) => { console.warn('Clipboard write failed:', err); }
+      );
+      copied = true;
+    }
+    const msg = copied
+      ? `📋 Excel Desktop can't auto-download. CSV copied to clipboard — paste into a new file and save as "${filename}".`
+      : `⚠️ Excel Desktop can't auto-download "${filename}". Use Excel Online for one-click CSV export.`;
+    showStatus(msg, 'warning');
+    console.log('Desktop CSV fallback for:', filename);
+    return false;
+  }
+
   const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
 
@@ -74,6 +104,7 @@ function downloadCSV(content, filename) {
 
   URL.revokeObjectURL(url);
   console.log('Downloaded:', filename);
+  return true;
 }
 
 /**

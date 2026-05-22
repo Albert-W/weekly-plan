@@ -135,6 +135,23 @@ function getScoreColLetterForDay(dayIndex) {
   return indexToColumnLetter(getScoreColForDay(dayIndex) - 1);
 }
 
+/**
+ * True iff the add-in is running in Excel Online (browser, OneDrive
+ * auto-save). Tolerates missing Office.PlatformType on older clients
+ * by returning false rather than throwing.
+ *
+ * @returns {boolean}
+ */
+function isExcelOnline() {
+  try {
+    if (typeof Office === 'undefined' || !Office.context) return false;
+    if (typeof Office.PlatformType === 'undefined') return false;
+    return Office.context.platform === Office.PlatformType.OfficeOnline;
+  } catch {
+    return false;
+  }
+}
+
 // Export for use in other modules
 window.formatDateYYYYMMDD = formatDateYYYYMMDD;
 window.formatDateTime = formatDateTime;
@@ -147,3 +164,4 @@ window.getTaskColForDay = getTaskColForDay;
 window.getScoreColForDay = getScoreColForDay;
 window.getTaskColLetterForDay = getTaskColLetterForDay;
 window.getScoreColLetterForDay = getScoreColLetterForDay;
+window.isExcelOnline = isExcelOnline;

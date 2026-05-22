@@ -12,6 +12,10 @@
 Office.onReady((info) => {
   console.log('Office.onReady called, host:', info.host);
 
+  // DOM bootstrap runs unconditionally so the date icon shows and
+  // buttons are wired even if we're not in Excel.
+  bootstrapDom();
+
   if (info.host === Office.HostType.Excel) {
     console.log('Excel Add-in loaded');
     document.getElementById('sideload-msg').style.display = 'none';
@@ -25,6 +29,49 @@ Office.onReady((info) => {
       '<p>This add-in only works in Excel.<br>Host detected: ' + (info.host || 'None') + '</p>';
   }
 });
+
+/**
+ * One-time DOM bootstrap. Sets the date icon and wires buttons by
+ * `data-action` / `data-toggle` attributes instead of inline onclick.
+ *
+ * Adding a new button means: drop it in the HTML with the right
+ * data-attribute, then add a matching entry to BUTTON_ACTIONS below.
+ * No more inline JavaScript in taskpane.html.
+ */
+const BUTTON_ACTIONS = {
+  'refresh':              () => refreshCurrentSheet(),
+  'prompt-save':          () => promptSaveFile(),
+  'sort-habits':          () => sortHabits(),
+  'refresh-habit-dates':  () => refreshHabitsDates(),
+  'random-pick':          () => randomPickFromUI(),
+  'export-all':           () => exportWeeklyAsXLS(),
+  'start-new-week':       () => startNewWeekFromUI(),
+  'export-summary':       () => exportSummaryData(),
+  'add-task':             () => addTask(),
+};
+
+function bootstrapDom() {
+  // Date icon — was an inline <script> in taskpane.html.
+  const dateNum = document.getElementById('date-num');
+  if (dateNum) dateNum.textContent = new Date().getDate();
+
+  // Action buttons.
+  for (const btn of document.querySelectorAll('button[data-action]')) {
+    const action = btn.getAttribute('data-action');
+    const fn = BUTTON_ACTIONS[action];
+    if (!fn) {
+      console.warn('No handler for data-action="' + action + '"');
+      continue;
+    }
+    btn.addEventListener('click', fn);
+  }
+
+  // Toggle buttons.
+  for (const btn of document.querySelectorAll('button[data-toggle]')) {
+    const targetId = btn.getAttribute('data-toggle');
+    btn.addEventListener('click', () => toggleSection(targetId));
+  }
+}
 
 // ============================================================================
 // MAIN INITIALIZATION

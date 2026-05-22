@@ -308,9 +308,6 @@
 <body>
   <div class="container">
     <h1><span class="calendar-icon"><span class="date-num" id="date-num"></span></span> Weekly Plan</h1>
-    <script>
-      document.getElementById('date-num').textContent = new Date().getDate();
-    </script>
 
     <section id="sideload-msg">
       <p>Please sideload your add-in to see app body.</p>
@@ -333,10 +330,10 @@
         <h2>⚡ Common Actions</h2>
         <div class="btn-group">
           <div class="btn-row">
-            <button class="btn btn-success" onclick="refreshCurrentSheet()">
+            <button class="btn btn-success" data-action="refresh">
               🔄 Refresh
             </button>
-            <button class="btn btn-primary" onclick="promptSaveFile()">
+            <button class="btn btn-primary" data-action="prompt-save">
               💾 Save
             </button>
           </div>
@@ -351,14 +348,14 @@
         <h2>🎯 Habits Tracker</h2>
         <div class="btn-group">
           <div class="btn-row">
-            <button class="btn btn-primary" onclick="sortHabits()">
+            <button class="btn btn-primary" data-action="sort-habits">
               📊 Sort
             </button>
-            <button class="btn btn-secondary" onclick="refreshHabitsDates()">
+            <button class="btn btn-secondary" data-action="refresh-habit-dates">
               📅 Dates
             </button>
           </div>
-          <button class="btn btn-secondary" onclick="toggleSection('habits-help')">
+          <button class="btn btn-secondary" data-toggle="habits-help">
             ❓ Help
           </button>
         </div>
@@ -390,32 +387,32 @@
       <div id="weekly-actions" class="card" style="display: none;">
         <h2>📅 Weekly Timetable</h2>
         <div class="btn-group">
-          <button class="btn btn-primary" onclick="randomPickFromUI()">
+          <button class="btn btn-primary" data-action="random-pick">
             🎲 Random Pick
           </button>
           <div class="btn-row">
-            <button class="btn btn-secondary" onclick="toggleSection('add-task-section')">
+            <button class="btn btn-secondary" data-toggle="add-task-section">
               ➕ Add
             </button>
-            <button class="btn btn-secondary" onclick="toggleSection('delete-task-section')">
+            <button class="btn btn-secondary" data-toggle="delete-task-section">
               🗑️ Delete
             </button>
           </div>
 
           <!-- Archive & New Week Section -->
           <div class="btn-row">
-            <button class="btn btn-warning" onclick="exportWeeklyAsXLS()">
+            <button class="btn btn-warning" data-action="export-all">
               📦 Export All
             </button>
-            <button class="btn btn-success" onclick="startNewWeekFromUI()">
+            <button class="btn btn-success" data-action="start-new-week">
               🗓️ New Week
             </button>
           </div>
-          <button class="btn btn-secondary" onclick="exportSummaryData()">
+          <button class="btn btn-secondary" data-action="export-summary">
             📊 Export Summary
           </button>
 
-          <button class="btn btn-secondary" onclick="toggleSection('weekly-help')">
+          <button class="btn btn-secondary" data-toggle="weekly-help">
             ❓ Help
           </button>
         </div>
@@ -464,7 +461,7 @@
             <label>Weight (Score Multiplier)</label>
             <input type="number" id="new-task-weight" value="1" min="0.1" step="0.1">
           </div>
-          <button class="btn btn-success" onclick="addTask()" style="width: 100%;">
+          <button class="btn btn-success" data-action="add-task" style="width: 100%;">
             Add Task
           </button>
         </div>

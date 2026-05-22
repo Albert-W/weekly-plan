@@ -90,35 +90,28 @@ async function addTask() {
 }
 
 /**
- * Prompt user to save the file
+ * Prompt user to save the file.
  * Note: Office.js cannot directly save files for security reasons.
  * On Excel Online, files auto-save to OneDrive/SharePoint.
  * On Desktop, we can only remind the user to save manually.
+ *
+ * Platform detection goes through isExcelOnline() (utils.js) which
+ * gracefully returns false on older clients where Office.PlatformType
+ * is undefined, so this function never throws.
  */
 function promptSaveFile() {
-  // Check if we're in Excel Online or Desktop
-  const isOnline = Office.context.platform === Office.PlatformType.OfficeOnline;
-
-  if (isOnline) {
+  if (isExcelOnline()) {
     showStatus('📁 Files auto-save on Excel Online. Your changes are saved!', 'success');
   } else {
     showStatus('💾 Please save your file: Press Ctrl+S (or Cmd+S on Mac)', 'warning');
-
-    // Also show an alert for visibility
-    if (typeof Office.context.ui !== 'undefined') {
-      // Could show a dialog, but for simplicity just use status message
-    }
   }
 }
 
 /**
- * Check if there are unsaved changes and prompt user
- * Call this before critical operations or on a timer
+ * Remind the user to save on Desktop. No-op on Excel Online (auto-save).
  */
 function remindToSave() {
-  const isOnline = Office.context.platform === Office.PlatformType.OfficeOnline;
-
-  if (!isOnline) {
+  if (!isExcelOnline()) {
     showStatus('💡 Remember to save your file (Ctrl+S / Cmd+S)', 'info');
   }
 }
