@@ -50,7 +50,7 @@ async function initializeWeeklyOnOpen(context) {
   dateCell.load('values');
 
   // Get first day number from D4
-  const firstDayCell = sheet.getRange('D4');
+  const firstDayCell = sheet.getRange(CONFIG.WEEKLY.FIRST_DAY_HEADER_CELL);
   firstDayCell.load('values');
 
   // Find last row with time data first (needed for archive)
@@ -134,7 +134,7 @@ async function setNewWeekDates(context, sheet) {
 
   // Set B4 = "yyyy mm"
   const yearMonth = `${newMonday.getFullYear()} ${String(newMonday.getMonth() + 1).padStart(2, '0')}`;
-  sheet.getRange('B4').values = [[yearMonth]];
+  sheet.getRange(CONFIG.WEEKLY.DATE_CELL).values = [[yearMonth]];
 
   // Set day numbers in D4, F4, H4, J4, L4, N4, P4
   for (let i = 0; i < CONFIG.WEEKLY.DAYS_IN_WEEK; i++) {
@@ -225,7 +225,7 @@ async function clearForNewWeek(context) {
  */
 async function highlightCurrentDay(context, sheet) {
   // Clear previous highlighting in header row
-  sheet.getRange('A4:P4').format.fill.clear();
+  sheet.getRange(CONFIG.WEEKLY.HEADER_ROW_RANGE).format.fill.clear();
 
   // Highlight current day's task and score header columns
   const taskColLetter = getTaskColLetterForDay(state.weekly.currentDayIndex);
@@ -505,7 +505,7 @@ async function randomPick(context) {
     }
 
     // Get all tasks (starting from row 4)
-    const tasksRange = tasksSheet.getRange(`A4:A${state.weekly.lastTaskRow}`);
+    const tasksRange = tasksSheet.getRange(`A${CONFIG.TASKS.DATA_START_ROW}:A${state.weekly.lastTaskRow}`);
     tasksRange.load('values');
     await context.sync();
 
@@ -584,10 +584,10 @@ async function processWeeklyScoreChange(context, row, col, newScore) {
   const dailyTotalCell = weeklySheet.getRange(
     `${scoreColLetter}${CONFIG.WEEKLY.SCORE_ROW}`
   );
-  const tasksNames = tasksSheet.getRange(`A4:A${state.weekly.lastTaskRow}`);
-  const tasksWeights = tasksSheet.getRange(`B4:B${state.weekly.lastTaskRow}`);
-  const tasksCounts = tasksSheet.getRange(`F4:F${state.weekly.lastTaskRow}`);
-  const tasksScores = tasksSheet.getRange(`G4:G${state.weekly.lastTaskRow}`);
+  const tasksNames = tasksSheet.getRange(`A${CONFIG.TASKS.DATA_START_ROW}:A${state.weekly.lastTaskRow}`);
+  const tasksWeights = tasksSheet.getRange(`B${CONFIG.TASKS.DATA_START_ROW}:B${state.weekly.lastTaskRow}`);
+  const tasksCounts = tasksSheet.getRange(`F${CONFIG.TASKS.DATA_START_ROW}:F${state.weekly.lastTaskRow}`);
+  const tasksScores = tasksSheet.getRange(`G${CONFIG.TASKS.DATA_START_ROW}:G${state.weekly.lastTaskRow}`);
 
   taskCell.load('values');
   dailyTotalCell.load('values');

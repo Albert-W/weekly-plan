@@ -15,13 +15,6 @@ const CONFIG = {
   GOALS_SHEET: 'Goals',
   CHARTER_SHEET: 'Charter',
 
-  // Tasks sheet conventions
-  TASKS: {
-    // Name used for the auto-created "catch-all" row when a scored
-    // task isn't found in the Tasks list.
-    FALLBACK_NAME: 'others',
-  },
-
   // ==================== HABITS CONFIG ====================
   HABITS: {
     DATA_START_ROW: 4,
@@ -34,8 +27,21 @@ const CONFIG = {
       DAY_END: 'Q',
       TOTAL_COUNT: 'R'
     },
+    // Derived address strings (kept here so other files never have
+    // to hardcode 'B3' or 'D3:Q3').
+    YEAR_MONTH_CELL: 'B3',
+    HEADER_RANGE: 'D3:Q3',
     DAYS_COUNT: 14,
     STREAK_MULTIPLIER: 1.1
+  },
+
+  // ==================== TASKS CONFIG ====================
+  TASKS: {
+    // Name used for the auto-created "catch-all" row when a scored
+    // task isn't found in the Tasks list.
+    FALLBACK_NAME: 'others',
+    // First row of actual task data (rows 1-3 are headers).
+    DATA_START_ROW: 4,
   },
 
   // ==================== WEEKLY/TIMETABLE CONFIG ====================
@@ -45,6 +51,9 @@ const CONFIG = {
     HEADER_ROW: 4,
     TIME_COLUMN: 2,     // Column B for timestamps
     DATE_CELL: 'B4',    // Cell containing "yyyy mm" format
+    FIRST_DAY_HEADER_CELL: 'D4',  // First day-number header (Monday)
+    HEADER_RANGE: 'D4:P4',        // All 7 day-number headers (D, F, H, J, L, N, P)
+    HEADER_ROW_RANGE: 'A4:P4',    // Whole header row, for fill clears
     LAST_TIME_ROW: 36,  // Last row with time data
     SCORE_ROW: 38,      // Score totals row
     // Control buttons in row 2

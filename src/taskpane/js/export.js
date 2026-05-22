@@ -124,8 +124,8 @@ function downloadCSV(content, filename) {
 async function buildWeeklyCSV(context) {
   const weeklySheet = context.workbook.worksheets.getItem(CONFIG.WEEKLY_SHEET);
 
-  const dateCell = weeklySheet.getRange('B4');
-  const headerRange = weeklySheet.getRange('D4:P4');
+  const dateCell = weeklySheet.getRange(CONFIG.WEEKLY.DATE_CELL);
+  const headerRange = weeklySheet.getRange(CONFIG.WEEKLY.HEADER_RANGE);
   const timeRange = weeklySheet.getRange(
     `B${CONFIG.WEEKLY.DATA_START_ROW}:B${CONFIG.WEEKLY.LAST_TIME_ROW}`
   );
@@ -361,9 +361,9 @@ async function exportWeeklyAsXLS() {
 
     await Excel.run(async (context) => {
       const weeklySheet = context.workbook.worksheets.getItem(CONFIG.WEEKLY_SHEET);
-      const dateCell = weeklySheet.getRange('B4');
+      const dateCell = weeklySheet.getRange(CONFIG.WEEKLY.DATE_CELL);
       dateCell.load('values');
-      const headerRange = weeklySheet.getRange('D4:P4');
+      const headerRange = weeklySheet.getRange(CONFIG.WEEKLY.HEADER_RANGE);
       headerRange.load('values');
       await context.sync();
 

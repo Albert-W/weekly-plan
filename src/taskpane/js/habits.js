@@ -39,7 +39,7 @@ async function initializeHabitsSheet(context) {
  */
 async function highlightCurrentDateHeader(context, sheet) {
   // Clear all date header highlighting first (D3:Q3)
-  const headerRange = sheet.getRange('D3:Q3');
+  const headerRange = sheet.getRange(CONFIG.HABITS.HEADER_RANGE);
   headerRange.format.fill.color = CONFIG.COLORS.CLEAR;
 
   // If we have a valid current day index, highlight that column header
@@ -72,7 +72,7 @@ async function refreshHabitsDatesWithContext(context, sheet) {
 
   // Set year/month in B3
   const yearMonth = `${startDate.getFullYear()} ${String(startDate.getMonth() + 1).padStart(2, '0')}`;
-  sheet.getRange('B3').values = [[yearMonth]];
+  sheet.getRange(CONFIG.HABITS.YEAR_MONTH_CELL).values = [[yearMonth]];
 
   // Set day numbers in header row
   const days = [];
@@ -81,7 +81,7 @@ async function refreshHabitsDatesWithContext(context, sheet) {
     d.setDate(startDate.getDate() + i);
     days.push(d.getDate());
   }
-  sheet.getRange('D3:Q3').values = [days];
+  sheet.getRange(CONFIG.HABITS.HEADER_RANGE).values = [days];
 
   // Clear data area
   if (state.habits.lastRow >= CONFIG.HABITS.DATA_START_ROW) {
@@ -103,7 +103,7 @@ async function findHabitsDayIndex(context, sheet) {
   const today = new Date();
   const todayDay = today.getDate();
 
-  const headerRange = sheet.getRange('D3:Q3');
+  const headerRange = sheet.getRange(CONFIG.HABITS.HEADER_RANGE);
   headerRange.load('values');
   await context.sync();
 
