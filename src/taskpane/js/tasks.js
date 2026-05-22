@@ -55,5 +55,22 @@ async function createTask(context, name, weight) {
   return { row: newRow, name: trimmedName, weight: numericWeight };
 }
 
+/**
+ * Initialize Tasks sheet data.
+ * Sets state.weekly.lastTaskRow from the used range of column A.
+ *
+ * @param {Excel.RequestContext} context - Excel context
+ */
+async function initializeTasksSheet(context) {
+  const sheet = context.workbook.worksheets.getItem(CONFIG.TASKS_SHEET);
+  const usedRange = sheet.getRange('A:A').getUsedRange();
+  usedRange.load('rowCount');
+  await context.sync();
+
+  state.weekly.lastTaskRow = usedRange.rowCount;
+  console.log('Tasks sheet initialized, lastTaskRow:', state.weekly.lastTaskRow);
+}
+
 // Export for use in other modules
 window.createTask = createTask;
+window.initializeTasksSheet = initializeTasksSheet;
