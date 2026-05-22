@@ -732,3 +732,58 @@ window.startNewWeekFromUI = startNewWeekFromUI;
 window.tickTimeHighlight = tickTimeHighlight;
 window.startTimeHighlightTicker = startTimeHighlightTicker;
 window.stopTimeHighlightTicker = stopTimeHighlightTicker;
+
+// ----------------------------------------------------------------------
+// Sheet-handler registration (dispatched from events.js)
+// ----------------------------------------------------------------------
+
+/**
+ * onActivate handler: when the Weekly sheet is activated, run the
+ * new-day re-init if needed, otherwise just refresh the time-row
+ * highlight.
+ */
+async function handleWeeklyActivate(context) {
+  const today = formatDateYYYYMMDD(new Date());
+  const lastInit = state.weekly.lastInitDate;
+  console.log('Weekly sheet activated. Today:', today, 'Last init:', lastInit);
+
+  if (lastInit !== today) {
+    console.log('🌅 New day detected! Re-initializing Weekly sheet...');
+    await initializeWeeklyOnOpen(context);
+  } else {
+    const weeklySheet = context.workbook.worksheets.getItem(CONFIG.WEEKLY_SHEET);
+    await highlightCurrentTimeRow(context, weeklySheet);
+  }
+}
+
+/**
+ * onChange handler: only act on score-column writes inside the data
+ * area; everything else is ignored.
+ */
+async function handleWeeklyCellChange(context, address, colIndex, row) {
+  if (
+    CONFIG.WEEKLY.SCORE_COLUMNS.includes(colIndex) &&
+    row >= CONFIG.WEEKLY.DATA_START_ROW &&
+    row <= CONFIG.WEEKLY.LAST_TIME_ROW
+  ) {
+    const sheet = context.workbook.worksheets.getItem(CONFIG.WEEKLY_SHEET);
+    const scoreCell = sheet.getRange(address);
+    scoreCell.load('values');
+    await context.sync();
+    const scoreValue = parseFloat(scoreCell.values[0][0]);
+    if (!isNaN(scoreValue)) {
+      await processWeeklyScoreChange(context, row, colIndex, scoreValue);
+    }
+  }
+}
+
+if (typeof registerSheetHandlers === 'function') {
+  registerSheetHandlers(CONFIG.WEEKLY_SHEET, {
+    onSelection: handleWeeklySelection,
+    onActivate: handleWeeklyActivate,
+    onChange: handleWeeklyCellChange,
+  });
+}
+
+window.handleWeeklyActivate = handleWeeklyActivate;
+window.handleWeeklyCellChange = handleWeeklyCellChange;

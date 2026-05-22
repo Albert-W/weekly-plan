@@ -263,3 +263,10 @@ window.handleHabitsSelection = handleHabitsSelection;
 window.recordHabitDone = recordHabitDone;
 window.sortHabits = sortHabits;
 window.refreshHabitsDates = refreshHabitsDates;
+
+// Register Habits sheet handlers with the events router (registry.js).
+if (typeof registerSheetHandlers === 'function') {
+  registerSheetHandlers(CONFIG.HABITS_SHEET, {
+    onSelection: handleHabitsSelection,
+  });
+}

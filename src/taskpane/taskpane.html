@@ -500,18 +500,20 @@
     1. config.js   - Configuration constants (no dependencies)
     2. state.js    - Global state (no dependencies)
     3. utils.js    - Utility functions (no dependencies)
-    4. ui.js       - UI functions (depends on state, config)
-    5. tasks.js    - Tasks-sheet domain (depends on config, state, utils)
-    6. summary.js  - Summary-sheet domain (depends on config, state)
-    7. export.js   - CSV/archive helpers (depends on config, state, utils)
-    8. habits.js   - Habits logic (depends on summary)
-    9. weekly.js   - Weekly logic (depends on tasks, summary, export)
-    10. events.js  - Event handlers
-    11. app.js     - Main initialization
+    4. registry.js - Sheet-handler registry (no dependencies)
+    5. ui.js       - UI functions (depends on state, config)
+    6. tasks.js    - Tasks-sheet domain (depends on config, state, utils)
+    7. summary.js  - Summary-sheet domain (depends on config, state)
+    8. export.js   - CSV/archive helpers (depends on config, state, utils)
+    9. habits.js   - Habits logic (depends on summary, registry)
+    10. weekly.js  - Weekly logic (depends on tasks, summary, export, registry)
+    11. events.js  - Event router (depends on registry)
+    12. app.js     - Main initialization
   -->
   <script src="js/config.js"></script>
   <script src="js/state.js"></script>
   <script src="js/utils.js"></script>
+  <script src="js/registry.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/tasks.js"></script>
   <script src="js/summary.js"></script>

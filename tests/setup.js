@@ -19,12 +19,13 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const SRC_DIR = resolve(__dirname, '..', 'src', 'taskpane', 'js');
 
-// Load order mirrors taskpane.html (config -> state -> utils -> ui ->
-// tasks -> summary -> export -> habits -> weekly -> events).
+// Load order mirrors taskpane.html (config -> state -> utils -> registry ->
+// ui -> tasks -> summary -> export -> habits -> weekly -> events).
 const SRC_FILES = [
   'config.js',
   'state.js',
   'utils.js',
+  'registry.js',
   'ui.js',
   'tasks.js',
   'summary.js',

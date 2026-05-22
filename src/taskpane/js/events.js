@@ -1,14 +1,21 @@
 /**
- * Event handlers for the Combined Tracker Add-in
+ * Office.js event wiring for the Combined Tracker Add-in.
  *
- * This file contains all Office.js event handlers for
- * sheet activation, selection changes, and cell changes.
+ * This file is pure routing. It does not know which sheets exist or
+ * what their semantics are — domain modules (habits.js, weekly.js,
+ * ...) self-register their per-sheet callbacks via
+ * registerSheetHandlers() in registry.js. Adding a new sheet
+ * requires zero changes to this file.
  */
 
+// ----------------------------------------------------------------------
+// Sheet activation
+// ----------------------------------------------------------------------
+
 /**
- * Handle sheet activation (when user clicks on a different sheet tab)
- * Also re-initializes Weekly sheet if it's a new day
- * @param {Object} event - The activation event
+ * Handle sheet activation (user clicked a different sheet tab).
+ * Dispatches to the activated sheet's onActivate handler (if any),
+ * then re-registers selection/change listeners on the new sheet.
  */
 async function handleSheetActivated(event) {
   try {
@@ -17,7 +24,6 @@ async function handleSheetActivated(event) {
     let newSheetName = null;
 
     await Excel.run(async (context) => {
-      // Get the newly activated sheet
       const activeSheet = context.workbook.worksheets.getActiveWorksheet();
       activeSheet.load('name');
       await context.sync();
@@ -25,38 +31,21 @@ async function handleSheetActivated(event) {
       newSheetName = activeSheet.name;
       console.log('Sheet changed to:', newSheetName);
 
-      // Check if we need to re-initialize Weekly sheet (new day check)
-      if (newSheetName === CONFIG.WEEKLY_SHEET) {
-        const today = formatDateYYYYMMDD(new Date());
-        const lastInit = state.weekly.lastInitDate;
-
-        console.log('Weekly sheet activated. Today:', today, 'Last init:', lastInit);
-
-        if (lastInit !== today) {
-          console.log('🌅 New day detected! Re-initializing Weekly sheet...');
-          await initializeWeeklyOnOpen(context);
-        } else {
-          // Same day - just refresh time highlighting
-          const weeklySheet = context.workbook.worksheets.getItem(CONFIG.WEEKLY_SHEET);
-          await highlightCurrentTimeRow(context, weeklySheet);
-        }
+      // Domain-specific activation work (e.g. Weekly's new-day check).
+      const handlers = getSheetHandlers(newSheetName);
+      if (handlers && handlers.onActivate) {
+        await handlers.onActivate(context, newSheetName);
       }
 
-      // Only update event handlers if it's actually a different sheet
+      // Only update event handlers if the sheet actually changed.
       if (state.currentSheet !== newSheetName) {
         state.currentSheet = newSheetName;
-
-        // Re-register selection changed event for the new sheet
         await registerSelectionChangedEvent(context, activeSheet);
-
-        // Re-register cell changed event for the new sheet
         await registerOnChangedEvent(context, activeSheet);
-
         await context.sync();
       }
     });
 
-    // Update UI outside of Excel.run to ensure DOM updates
     if (newSheetName) {
       state.currentSheet = newSheetName;
     }
@@ -69,13 +58,16 @@ async function handleSheetActivated(event) {
   }
 }
 
+// ----------------------------------------------------------------------
+// Selection changes
+// ----------------------------------------------------------------------
+
 /**
- * Register SelectionChanged event for a sheet
- * @param {Excel.RequestContext} context - Excel context
- * @param {Excel.Worksheet} sheet - The worksheet to register for
+ * Register the SelectionChanged event for a sheet. Removes any previous
+ * handler first so we never stack duplicates (see task #13 for the
+ * onChanged equivalent).
  */
 async function registerSelectionChangedEvent(context, sheet) {
-  // Remove existing handler if any
   if (state.selectionHandler) {
     try {
       state.selectionHandler.remove();
@@ -85,7 +77,6 @@ async function registerSelectionChangedEvent(context, sheet) {
     }
   }
 
-  // Add new handler
   state.selectionHandler = sheet.onSelectionChanged.add(async (event) => {
     await handleSelectionChanged(event);
   });
@@ -95,8 +86,7 @@ async function registerSelectionChangedEvent(context, sheet) {
 }
 
 /**
- * Handle selection changed - routes to appropriate handler based on sheet
- * @param {Object} event - The selection changed event
+ * Dispatch a selection event to the current sheet's onSelection handler.
  */
 async function handleSelectionChanged(event) {
   try {
@@ -104,17 +94,13 @@ async function handleSelectionChanged(event) {
       const address = event.address;
       console.log('Selection:', address, 'on sheet:', state.currentSheet);
 
-      // Parse address
       const parsed = parseAddress(address);
       if (!parsed) return;
-
       const { column, colIndex, row } = parsed;
 
-      // Route to appropriate handler
-      if (state.currentSheet === CONFIG.HABITS_SHEET) {
-        await handleHabitsSelection(context, address, column, colIndex, row);
-      } else if (state.currentSheet === CONFIG.WEEKLY_SHEET) {
-        await handleWeeklySelection(context, address, column, colIndex, row);
+      const handlers = getSheetHandlers(state.currentSheet);
+      if (handlers && handlers.onSelection) {
+        await handlers.onSelection(context, address, column, colIndex, row);
       }
     });
   } catch (error) {
@@ -122,15 +108,15 @@ async function handleSelectionChanged(event) {
   }
 }
 
+// ----------------------------------------------------------------------
+// Cell changes
+// ----------------------------------------------------------------------
+
 /**
- * Register for cell value changes (onChanged event)
- * This is equivalent to VBA Worksheet_Change
- * @param {Excel.RequestContext} context - Excel context
- * @param {Excel.Worksheet} sheet - The worksheet to register for
+ * Register the onChanged event for a sheet. Removes any previous handler
+ * first to prevent stacking (regression guard from task #13).
  */
 async function registerOnChangedEvent(context, sheet) {
-  // Remove existing handler if any (prevents stacking duplicate handlers
-  // each time the sheet is activated or refreshed)
   if (state.changeHandler) {
     try {
       state.changeHandler.remove();
@@ -153,9 +139,7 @@ async function registerOnChangedEvent(context, sheet) {
 }
 
 /**
- * Handle cell value changes
- * Equivalent to VBA Worksheet_Change
- * @param {Object} event - The change event
+ * Dispatch a cell-changed event to the current sheet's onChange handler.
  */
 async function handleCellChanged(event) {
   try {
@@ -163,28 +147,13 @@ async function handleCellChanged(event) {
       const address = event.address;
       console.log('Cell changed:', address, 'on sheet:', state.currentSheet);
 
-      // Only process changes on Weekly sheet
-      if (state.currentSheet !== CONFIG.WEEKLY_SHEET) return;
-
-      // Parse address
       const parsed = parseAddress(address);
       if (!parsed) return;
-
       const { colIndex, row } = parsed;
 
-      // Check if it's a score column (even: 4,6,8,10,12,14,16) in data area
-      if (CONFIG.WEEKLY.SCORE_COLUMNS.includes(colIndex) &&
-          row >= CONFIG.WEEKLY.DATA_START_ROW && row <= CONFIG.WEEKLY.LAST_TIME_ROW) {
-
-        const sheet = context.workbook.worksheets.getItem(CONFIG.WEEKLY_SHEET);
-        const scoreCell = sheet.getRange(address);
-        scoreCell.load('values');
-        await context.sync();
-
-        const scoreValue = parseFloat(scoreCell.values[0][0]);
-        if (!isNaN(scoreValue)) {
-          await processWeeklyScoreChange(context, row, colIndex, scoreValue);
-        }
+      const handlers = getSheetHandlers(state.currentSheet);
+      if (handlers && handlers.onChange) {
+        await handlers.onChange(context, address, colIndex, row);
       }
     });
   } catch (error) {
