@@ -6,17 +6,24 @@
  */
 
 /**
- * Update the sheet indicator in the DOM
+ * Update the sheet indicator in the title bar.
+ * Shows " · {sheetName}" suffixed to "Weekly Plan" in the H1, or
+ * nothing if the sheet name is empty / generic placeholder.
+ *
  * @param {string} sheetName - The name of the current sheet
  */
 function updateSheetIndicator(sheetName) {
-  const indicator = document.getElementById('current-sheet');
-  if (indicator) {
-    indicator.textContent = sheetName;
-    console.log('Sheet indicator updated to:', sheetName);
-  } else {
+  const suffix = document.getElementById('current-sheet-suffix');
+  if (!suffix) {
     console.error('Sheet indicator element not found!');
+    return;
   }
+  if (!sheetName || sheetName === 'None' || sheetName === 'Unknown') {
+    suffix.textContent = '';
+  } else {
+    suffix.textContent = ' · ' + sheetName;
+  }
+  console.log('Sheet indicator updated to:', sheetName);
 }
 
 /**
