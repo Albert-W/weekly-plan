@@ -40,7 +40,6 @@ Office.onReady((info) => {
  */
 const BUTTON_ACTIONS = {
   'refresh':              () => refreshCurrentSheet(),
-  'prompt-save':          () => promptSaveFile(),
   'sort-habits':          () => sortHabits(),
   'refresh-habit-dates':  () => refreshHabitsDates(),
   'random-pick':          () => randomPickFromUI(),

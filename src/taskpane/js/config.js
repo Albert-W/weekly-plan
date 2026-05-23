@@ -60,9 +60,7 @@ const CONFIG = {
     BUTTONS: {
       HELP: 3,      // Column C
       ADD: 5,       // Column E
-      DELETE: 7,    // Column G
       RANDOM: 9,    // Column I
-      THANK: 11     // Column K
     },
     // Task columns (odd: 3,5,7,9,11,13,15) = C,E,G,I,K,M,O
     TASK_COLUMNS: [3, 5, 7, 9, 11, 13, 15],

@@ -453,14 +453,8 @@ async function handleWeeklySelection(context, address, column, colIndex, row) {
       case CONFIG.WEEKLY.BUTTONS.ADD:
         toggleSection('add-task-section');
         break;
-      case CONFIG.WEEKLY.BUTTONS.DELETE:
-        toggleSection('delete-task-section');
-        break;
       case CONFIG.WEEKLY.BUTTONS.RANDOM:
         await randomPick(context);
-        break;
-      case CONFIG.WEEKLY.BUTTONS.THANK:
-        toggleSection('thank-section');
         break;
     }
     return;
