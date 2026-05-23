@@ -41,3 +41,14 @@ export const createTask = globalThis.createTask;
 // events.js
 export const registerOnChangedEvent = globalThis.registerOnChangedEvent;
 export const handleCellChanged = globalThis.handleCellChanged;
+
+// More from weekly.js exposed for tests
+export const initializeWeeklyOnOpen = globalThis.initializeWeeklyOnOpen;
+export const highlightCurrentDay = globalThis.highlightCurrentDay;
+export const refreshTimeHighlight = globalThis.refreshTimeHighlight;
+
+// habits.js
+export const initializeHabitsSheet = globalThis.initializeHabitsSheet;
+
+// ui.js
+export const addTask = globalThis.addTask;
