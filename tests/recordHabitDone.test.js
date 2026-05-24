@@ -97,8 +97,11 @@ describe('recordHabitDone', () => {
     expect(fake.helpers.getCellValue(CONFIG.HABITS_SHEET, `R${row}`)).toBe(6);
   });
 
-  it('PERF: uses at most 3 syncs regardless of streak length (regression guard for task #1)', async () => {
-    // 7-day streak — old code would have done 7+5 = 12 syncs
+  it('PERF: uses exactly 4 syncs regardless of streak length (regression guard for tasks #1 + #37)', async () => {
+    // 7-day streak — old code did 7+5 = 12 syncs.
+    // After task #1: 2 inside recordHabitDone.
+    // After task #37: 2 inside updateSummary.
+    // Total: 4. Exact assertion ratchets so any regression fails loudly.
     const { fake, row } = setupHabitsSheet({ baseScore: 1, priorDays: [1, 1, 1, 1, 1, 1, 1] });
     state.habits.currentDayIndex = 7;
     state.habits.lastRow = row;
@@ -107,11 +110,7 @@ describe('recordHabitDone', () => {
 
     await Excel.run(async (ctx) => { await recordHabitDone(ctx, row); });
 
-    // 2 inside recordHabitDone + however many updateSummary uses.
-    // updateSummary on a fresh Summary sheet is ~4 syncs (its own
-    // perf opportunity, tracked separately). Pinning at <=7 for now;
-    // tighten when updateSummary is batched.
-    expect(fake.helpers.getSyncCount()).toBeLessThanOrEqual(7);
+    expect(fake.helpers.getSyncCount()).toBe(4);
   });
 
   it('does not write today if the habit name cell is empty', async () => {

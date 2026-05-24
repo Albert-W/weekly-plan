@@ -154,8 +154,11 @@ describe('processWeeklyScoreChange', () => {
     expect(fake.helpers.getCellValue(CONFIG.WEEKLY_SHEET, `D${CONFIG.WEEKLY.SCORE_ROW}`)).toBeNull();
   });
 
-  it('PERF: uses at most 3 syncs per score entry regardless of task count (regression guard for task #2)', async () => {
+  it('PERF: uses exactly 4 syncs per score entry regardless of task count (regression guard for tasks #2 + #37)', async () => {
     // Many tasks — make sure the lookup loop didn't sneak back in.
+    // After task #2: 2 inside processWeeklyScoreChange.
+    // After task #37: 2 inside updateSummary.
+    // Total: 4 regardless of task count. Exact assertion ratchets.
     const tasks = [];
     for (let i = 0; i < 50; i++) tasks.push({ name: `task_${i}`, weight: 1 });
     tasks.push({ name: 'Match', weight: 3 });
@@ -168,8 +171,6 @@ describe('processWeeklyScoreChange', () => {
       await processWeeklyScoreChange(ctx, 5, 4, 0.5);
     });
 
-    // 2 inside processWeeklyScoreChange + updateSummary calls.
-    // updateSummary is on its own perf-task list; tightened later.
-    expect(fake.helpers.getSyncCount()).toBeLessThanOrEqual(7);
+    expect(fake.helpers.getSyncCount()).toBe(4);
   });
 });

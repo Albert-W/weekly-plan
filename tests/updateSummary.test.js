@@ -79,4 +79,13 @@ describe('updateSummary', () => {
       Excel.run(async (ctx) => { await updateSummary(ctx, 1, 0); })
     ).resolves.not.toThrow();
   });
+
+  it('PERF: uses exactly 2 syncs per call (regression guard for task #37)', async () => {
+    const fake = setup();
+    fake.helpers.resetSyncCount();
+
+    await Excel.run(async (ctx) => { await updateSummary(ctx, 1.0, -0.3); });
+
+    expect(fake.helpers.getSyncCount()).toBe(2);
+  });
 });

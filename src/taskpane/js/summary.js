@@ -27,65 +27,86 @@ async function initializeSummarySheet(context) {
  */
 
 /**
- * Update Summary sheet with scores
- * @param {Excel.RequestContext} context - Excel context
- * @param {number} positiveScore - Positive score to add
- * @param {number} negativeScore - Negative score to add
+ * Update the Summary sheet with today's score deltas.
+ *
+ * Two-sync pattern (task #37):
+ *   Sync 1 — load A1:F{lastSummaryRow+1} in one read. Both the
+ *            date column (for find-or-create-today) AND the existing
+ *            D/E/F values of every row come back in one shot.
+ *   Sync 2 — queue all writes (date if new row, then D/E/F) and
+ *            flush in one batch.
+ *
+ * The outer try/catch swallows ItemNotFound from getItem so the
+ * function remains a silent no-op when the Summary sheet is absent
+ * (preserving the previous getItemOrNullObject behavior with one
+ * fewer sync).
+ *
+ * @param {Excel.RequestContext} context
+ * @param {number} positiveScore - Score to accumulate into col D
+ *   (only applied when > 0).
+ * @param {number} negativeScore - Score to accumulate into col E
+ *   (only applied when < 0).
  */
 async function updateSummary(context, positiveScore, negativeScore) {
   try {
-    const summarySheet = context.workbook.worksheets.getItemOrNullObject(CONFIG.SUMMARY_SHEET);
-    await context.sync();
+    // getItem throws if the sheet is absent. We let the outer catch
+    // handle that — silent no-op, no sync needed for existence check.
+    const summarySheet = context.workbook.worksheets.getItem(CONFIG.SUMMARY_SHEET);
 
-    if (summarySheet.isNullObject) return;
+    // Read date column + D/E/F for every existing row plus the next
+    // candidate row in a single batch. One sync. (Previously this
+    // function did 4-5 separate syncs — see CHANGELOG / task #37.)
+    const lastRow = state.weekly.lastSummaryRow + 1;
+    const allRange = summarySheet.getRange(`A1:F${lastRow}`);
+    allRange.load('values');
+    await context.sync();
 
     const todayStr = formatDateYYYYMMDD(new Date());
+    const rows = allRange.values; // 2D array, [rowIdx][colIdx 0..5]
 
-    // Find or create today's row
-    const summaryRange = summarySheet.getRange(`${CONFIG.SUMMARY.DATE_COLUMN}1:${CONFIG.SUMMARY.DATE_COLUMN}${state.weekly.lastSummaryRow + 1}`);
-    summaryRange.load('values');
-    await context.sync();
-
+    // Find today's row, or fall through to "append".
+    // Columns: A=0 (date), B=1, C=2, D=3 (pos), E=4 (neg), F=5 (total).
     let summaryRow = -1;
-    for (let i = 0; i < summaryRange.values.length; i++) {
-      if (String(summaryRange.values[i][0]) === todayStr) {
+    let curPos = 0, curNeg = 0, curTotal = 0;
+    for (let i = 0; i < rows.length; i++) {
+      if (String(rows[i][0]) === todayStr) {
         summaryRow = i + 1;
+        curPos = parseFloat(rows[i][3]) || 0;
+        curNeg = parseFloat(rows[i][4]) || 0;
+        curTotal = parseFloat(rows[i][5]) || 0;
         break;
       }
     }
 
-    if (summaryRow === -1) {
+    const isNewRow = summaryRow === -1;
+    if (isNewRow) {
       summaryRow = state.weekly.lastSummaryRow + 1;
-      summarySheet.getRange(`${CONFIG.SUMMARY.DATE_COLUMN}${summaryRow}`).values = [[todayStr]];
       state.weekly.lastSummaryRow = summaryRow;
     }
 
-    // Update positive score (Column D from config)
+    const newPos = positiveScore > 0 ? curPos + positiveScore : curPos;
+    const newNeg = negativeScore < 0 ? curNeg + negativeScore : curNeg;
+    const newTotal = curTotal + positiveScore + negativeScore;
+
+    // Queue all writes. They share one sync.
+    if (isNewRow) {
+      summarySheet.getRange(`${CONFIG.SUMMARY.DATE_COLUMN}${summaryRow}`).values = [[todayStr]];
+    }
     if (positiveScore > 0) {
-      const posCell = summarySheet.getRange(`${CONFIG.SUMMARY.POSITIVE_SCORE_COLUMN}${summaryRow}`);
-      posCell.load('values');
-      await context.sync();
-      posCell.values = [[(parseFloat(posCell.values[0][0]) || 0) + positiveScore]];
+      summarySheet.getRange(`${CONFIG.SUMMARY.POSITIVE_SCORE_COLUMN}${summaryRow}`).values = [[newPos]];
     }
-
-    // Update negative score (Column E from config)
     if (negativeScore < 0) {
-      const negCell = summarySheet.getRange(`${CONFIG.SUMMARY.NEGATIVE_SCORE_COLUMN}${summaryRow}`);
-      negCell.load('values');
-      await context.sync();
-      negCell.values = [[(parseFloat(negCell.values[0][0]) || 0) + negativeScore]];
+      summarySheet.getRange(`${CONFIG.SUMMARY.NEGATIVE_SCORE_COLUMN}${summaryRow}`).values = [[newNeg]];
     }
-
-    // Update total score (Column F from config) = positive + negative
-    const totalCell = summarySheet.getRange(`${CONFIG.SUMMARY.TOTAL_SCORE_COLUMN}${summaryRow}`);
-    totalCell.load('values');
-    await context.sync();
-    const currentTotal = parseFloat(totalCell.values[0][0]) || 0;
-    totalCell.values = [[currentTotal + positiveScore + negativeScore]];
-
+    summarySheet.getRange(`${CONFIG.SUMMARY.TOTAL_SCORE_COLUMN}${summaryRow}`).values = [[newTotal]];
     await context.sync();
   } catch (error) {
-    console.error('Update summary error:', error);
+    // Sheet absent or any unexpected read/write failure: log and
+    // return silently. This matches the pre-task-#37 contract of
+    // "no-op when Summary sheet is missing".
+    if (!/not found/i.test(String(error && error.message))) {
+      console.error('Update summary error:', error);
+    }
   }
 }
 
