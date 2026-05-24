@@ -26,6 +26,7 @@ const SRC_FILES = [
   'state.js',
   'utils.js',
   'registry.js',
+  'concurrency.js',
   'ui.js',
   'tasks.js',
   'summary.js',

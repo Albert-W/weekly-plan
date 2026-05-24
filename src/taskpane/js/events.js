@@ -89,23 +89,28 @@ async function registerSelectionChangedEvent(context, sheet) {
  * Dispatch a selection event to the current sheet's onSelection handler.
  */
 async function handleSelectionChanged(event) {
-  try {
-    await Excel.run(async (context) => {
-      const address = event.address;
-      console.log('Selection:', address, 'on sheet:', state.currentSheet);
+  // Pin the sheet key BEFORE the await, in case state.currentSheet
+  // changes mid-flight.
+  const sheetKey = state.currentSheet;
+  await serializeSheetWrite(sheetKey, async () => {
+    try {
+      await Excel.run(async (context) => {
+        const address = event.address;
+        console.log('Selection:', address, 'on sheet:', state.currentSheet);
 
-      const parsed = parseAddress(address);
-      if (!parsed) return;
-      const { column, colIndex, row } = parsed;
+        const parsed = parseAddress(address);
+        if (!parsed) return;
+        const { column, colIndex, row } = parsed;
 
-      const handlers = getSheetHandlers(state.currentSheet);
-      if (handlers && handlers.onSelection) {
-        await handlers.onSelection(context, address, column, colIndex, row);
-      }
-    });
-  } catch (error) {
-    console.error('SelectionChanged error:', error);
-  }
+        const handlers = getSheetHandlers(state.currentSheet);
+        if (handlers && handlers.onSelection) {
+          await handlers.onSelection(context, address, column, colIndex, row);
+        }
+      });
+    } catch (error) {
+      console.error('SelectionChanged error:', error);
+    }
+  });
 }
 
 // ----------------------------------------------------------------------
@@ -142,23 +147,30 @@ async function registerOnChangedEvent(context, sheet) {
  * Dispatch a cell-changed event to the current sheet's onChange handler.
  */
 async function handleCellChanged(event) {
-  try {
-    await Excel.run(async (context) => {
-      const address = event.address;
-      console.log('Cell changed:', address, 'on sheet:', state.currentSheet);
+  // Serialize the entire handler against other handlers for the SAME
+  // sheet so two rapid cell writes can't both read the same
+  // "current total" and clobber each other's increments (RMW race
+  // regression guard from task #32).
+  const sheetKey = state.currentSheet;
+  await serializeSheetWrite(sheetKey, async () => {
+    try {
+      await Excel.run(async (context) => {
+        const address = event.address;
+        console.log('Cell changed:', address, 'on sheet:', state.currentSheet);
 
-      const parsed = parseAddress(address);
-      if (!parsed) return;
-      const { colIndex, row } = parsed;
+        const parsed = parseAddress(address);
+        if (!parsed) return;
+        const { colIndex, row } = parsed;
 
-      const handlers = getSheetHandlers(state.currentSheet);
-      if (handlers && handlers.onChange) {
-        await handlers.onChange(context, address, colIndex, row);
-      }
-    });
-  } catch (error) {
-    console.error('CellChanged error:', error);
-  }
+        const handlers = getSheetHandlers(state.currentSheet);
+        if (handlers && handlers.onChange) {
+          await handlers.onChange(context, address, colIndex, row);
+        }
+      });
+    } catch (error) {
+      console.error('CellChanged error:', error);
+    }
+  });
 }
 
 // Export for use in other modules

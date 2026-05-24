@@ -57,3 +57,12 @@ export const addTask = globalThis.addTask;
 export const showModal = globalThis.showModal;
 export const showWarningPopup = globalThis.showWarningPopup;
 export const showInfoPopup = globalThis.showInfoPopup;
+
+// concurrency.js
+export const serializeSheetWrite = globalThis.serializeSheetWrite;
+export const resetWriteChains = globalThis.resetWriteChains;
+export const getInFlightChain = globalThis.getInFlightChain;
+
+// registry.js
+export const registerSheetHandlers = globalThis.registerSheetHandlers;
+export const getSheetHandlers = globalThis.getSheetHandlers;
