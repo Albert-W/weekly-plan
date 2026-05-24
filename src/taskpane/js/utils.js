@@ -30,16 +30,23 @@ function formatDateTime(date) {
 }
 
 /**
- * Convert column letter(s) to 0-based index
- * @param {string} letter - Column letter (e.g., 'A', 'AA')
- * @returns {number} 0-based column index
+ * Convert column letter(s) to 0-based index.
+ *
+ * Excel column letters are base-26 with no zero digit
+ * (A..Z, AA..AZ, BA..BZ, ...), so we accumulate as
+ * (charCode - 'A' + 1) per character and subtract 1 at the end
+ * to get a 0-based result.
+ *
+ * @param {string} letter - Column letter (e.g., 'A', 'Z', 'AA', 'AZ')
+ * @returns {number} 0-based column index ('A' -> 0, 'Z' -> 25,
+ *   'AA' -> 26, 'AZ' -> 51)
  */
 function columnLetterToIndex(letter) {
   let index = 0;
   for (let i = 0; i < letter.length; i++) {
-    index = index * 26 + (letter.charCodeAt(i) - 'A'.charCodeAt(0));
+    index = index * 26 + (letter.charCodeAt(i) - 'A'.charCodeAt(0) + 1);
   }
-  return index;
+  return index - 1;
 }
 
 /**

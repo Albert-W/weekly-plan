@@ -63,20 +63,33 @@ describe('utils.js - column math', () => {
     expect(columnLetterToIndex('Z')).toBe(25);
   });
 
+  it('columnLetterToIndex returns 0-based index for multi-letter columns', () => {
+    expect(columnLetterToIndex('AA')).toBe(26);
+    expect(columnLetterToIndex('AB')).toBe(27);
+    expect(columnLetterToIndex('AZ')).toBe(51);
+    expect(columnLetterToIndex('BA')).toBe(52);
+    expect(columnLetterToIndex('ZZ')).toBe(701);
+  });
+
   it('indexToColumnLetter is the inverse for single-letter columns', () => {
     for (const letter of ['A', 'C', 'Q', 'Z']) {
       expect(indexToColumnLetter(columnLetterToIndex(letter))).toBe(letter);
     }
   });
 
-  // NOTE: columnLetterToIndex is currently broken for multi-letter
-  // columns (`AA` -> 0). The Weekly grid only uses A-Q so this hasn't
-  // surfaced in production. Test pinned to the current behavior so we
-  // notice if a future refactor changes it. Tracked separately.
   it('indexToColumnLetter handles multi-letter columns correctly', () => {
     expect(indexToColumnLetter(26)).toBe('AA');
     expect(indexToColumnLetter(27)).toBe('AB');
     expect(indexToColumnLetter(51)).toBe('AZ');
+  });
+
+  it('round-trips through both functions for every 1- and 2-letter column', () => {
+    // Verify the inverse property end-to-end. Drops the previous
+    // "broken on purpose" pin (#39).
+    for (let i = 0; i < 26 * 27; i++) {
+      const letter = indexToColumnLetter(i);
+      expect(columnLetterToIndex(letter)).toBe(i);
+    }
   });
 });
 
