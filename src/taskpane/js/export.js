@@ -3,8 +3,8 @@
  *
  * Encapsulates CSV serialization (buildWeeklyCSV, exportSheetAsCSV,
  * escapeCSV, formatExcelTime), file downloads (downloadCSV), and the
- * user-facing archive/export entry points (exportWeekData,
- * archiveWeekAutomatically, archiveAndStartNewWeek, exportWeeklyAsXLS).
+ * user-facing archive/export entry points
+ * (archiveWeekAutomatically, exportWeeklyAsXLS).
  *
  * Depends on config, state, utils. Loaded BEFORE weekly.js because
  * weekly.js (and habits.js indirectly via updateSummary) call into
@@ -236,80 +236,6 @@ async function archiveWeekAutomatically() {
  * Thin wrapper over buildWeeklyCSV that owns its own Excel.run.
  * @returns {Promise<{csv: string, filename: string} | null>}
  */
-async function exportWeekData() {
-  try {
-    let result = null;
-    await Excel.run(async (context) => {
-      result = await buildWeeklyCSV(context);
-    });
-    return result;
-  } catch (error) {
-    console.error('Export error:', error);
-    showStatus('Error exporting: ' + error.message, 'error');
-    return null;
-  }
-}
-
-/**
- * Build a CSV snapshot of the current Weekly sheet.
- *
- * Single source of truth for both the auto-archive on new-week
- * detection and the manual "Export All" action. Caller owns the
- * Excel.run context so this composes cleanly with other operations.
- *
- * @param {Excel.RequestContext} context - Excel context
- * @returns {Promise<{csv: string, filename: string}>}
- */
-
-/**
- * Show instructions for creating a copy in OneDrive
- */
-function showArchiveInstructions() {
-  const instructions = `
-📁 To save a copy of the Excel file:
-
-1. In Excel Online:
-   • File → Save As → Save a Copy
-   • Rename with week date
-
-2. In OneDrive:
-   • Right-click the file
-   • Select "Copy to"
-   • Rename the copy
-
-3. Version History:
-   • File → Info → Version History
-   • Restore any previous version
-  `;
-  console.log(instructions);
-}
-
-/**
- * Start a new week (clear data and set new dates)
- * Call this after archiving
- */
-
-/**
- * Archive the current week's data and start a new week
- * This exports data as CSV, then clears for new week
- */
-async function archiveAndStartNewWeek() {
-  await withStatus('Archive week', async () => {
-    showStatus('📦 Archiving week data...', 'info');
-    const weekData = await exportWeekData();
-    if (weekData) {
-      downloadCSV(weekData.csv, weekData.filename);
-      showArchiveInstructions();
-    }
-    showStatus('📥 Week archived! Click "Start New Week" to clear data.', 'success');
-  });
-}
-
-/**
- * Export current week data to CSV format.
- * Thin wrapper over buildWeeklyCSV that owns its own Excel.run.
- * @returns {Promise<{csv: string, filename: string} | null>}
- */
 
 /**
  * Export a single sheet as CSV
@@ -430,8 +356,5 @@ window.escapeCSV = escapeCSV;
 window.downloadCSV = downloadCSV;
 window.buildWeeklyCSV = buildWeeklyCSV;
 window.archiveWeekAutomatically = archiveWeekAutomatically;
-window.exportWeekData = exportWeekData;
-window.showArchiveInstructions = showArchiveInstructions;
-window.archiveAndStartNewWeek = archiveAndStartNewWeek;
 window.exportSheetAsCSV = exportSheetAsCSV;
 window.exportWeeklyAsXLS = exportWeeklyAsXLS;
