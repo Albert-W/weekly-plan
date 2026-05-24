@@ -91,4 +91,21 @@ describe('initializeWeeklyOnOpen', () => {
     const expectedYearMonth = `${currentMonday.getFullYear()} ${String(currentMonday.getMonth() + 1).padStart(2, '0')}`;
     expect(fake.helpers.getCellValue(CONFIG.WEEKLY_SHEET, 'B4')).toBe(expectedYearMonth);
   });
+
+  it('propagates sheet-driven grid extent: state.weekly.lastTimeRow reflects an extended grid (regression guard for [H1])', async () => {
+    // Seed time labels in B5..B50 so the auto-detector should pick row 50.
+    const fake = setupOpenedSheet({ b4: '', d4: '' });
+    for (let row = CONFIG.WEEKLY.DATA_START_ROW; row <= 50; row++) {
+      fake.helpers.setCells(CONFIG.WEEKLY_SHEET, { [`B${row}`]: 8 });
+    }
+    fake.installAsExcelGlobal();
+    // Reset to the defaults so we can detect overwrite.
+    state.weekly.lastTimeRow = CONFIG.WEEKLY.LAST_TIME_ROW;
+    state.weekly.scoreRow = CONFIG.WEEKLY.SCORE_ROW;
+
+    await Excel.run(async (ctx) => { await initializeWeeklyOnOpen(ctx); });
+
+    expect(state.weekly.lastTimeRow).toBe(50);
+    expect(state.weekly.scoreRow).toBe(52);
+  });
 });

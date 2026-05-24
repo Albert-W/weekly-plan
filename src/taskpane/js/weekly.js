@@ -56,6 +56,13 @@ async function initializeWeeklySheet(context) {
  * @param {Excel.RequestContext} context - Excel context
  */
 async function initializeWeeklyOnOpen(context) {
+  // Discover grid extent + currentDayIndex + lastMonday from the
+  // actual sheet first. This was previously skipped, so
+  // state.weekly.lastTimeRow / scoreRow / currentDayIndex / lastMonday
+  // kept their CONFIG defaults forever on real Excel and the
+  // sheet-driven grid feature (task #9) was dead at runtime.
+  await initializeWeeklySheet(context);
+
   const sheet = context.workbook.worksheets.getItem(CONFIG.WEEKLY_SHEET);
 
   // Get date from B4 (format: "yyyy mm")
@@ -66,13 +73,7 @@ async function initializeWeeklyOnOpen(context) {
   const firstDayCell = sheet.getRange(CONFIG.WEEKLY.FIRST_DAY_HEADER_CELL);
   firstDayCell.load('values');
 
-  // Find last row with time data first (needed for archive)
-  const timeColumn = sheet.getRange('B:B').getUsedRange();
-  timeColumn.load('rowCount');
-
   await context.sync();
-
-  // Using fixed values from CONFIG: LAST_TIME_ROW = 36, SCORE_ROW = 38
 
   const dateStr = String(dateCell.values[0][0] || '');
   const firstDay = parseInt(firstDayCell.values[0][0]) || 0;
@@ -120,14 +121,8 @@ async function initializeWeeklyOnOpen(context) {
     await setNewWeekDates(context, sheet);
   }
 
-  // Using fixed CONFIG values for LAST_TIME_ROW and SCORE_ROW
-
-  // Calculate current day index (0=Mon, 6=Sun)
-  const dayOfWeek = today.getDay();
-  state.weekly.currentDayIndex = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-
-  // Calculate last Monday
-  state.weekly.lastMonday = getMonday(today);
+  // currentDayIndex + lastMonday already populated by
+  // initializeWeeklySheet above; no need to recompute.
 
   // Highlight current day column
   await highlightCurrentDay(context, sheet);
