@@ -41,7 +41,22 @@ function formatExcelTime(time) {
  */
 function escapeCSV(value) {
   if (value === null || value === undefined) return '';
-  const str = String(value);
+  let str = String(value);
+
+  // OWASP CSV-injection defense. If a STRING cell starts with =, +,
+  // -, @, tab, or carriage return, Excel / LibreOffice / Google
+  // Sheets will try to interpret it as a formula when the CSV is
+  // opened. Prefix with a leading single quote so the receiving
+  // spreadsheet treats it as a literal string.
+  //
+  // Only string values need guarding — numeric values like -0.4 are
+  // parsed as numbers by the receiving spreadsheet regardless of
+  // their negative sign, so we leave them alone (otherwise scores
+  // would round-trip as text and break downstream analysis).
+  if (typeof value === 'string' && /^[=+\-@\t\r]/.test(str)) {
+    str = "'" + str;
+  }
+
   if (str.includes(',') || str.includes('"') || str.includes('\n')) {
     return '"' + str.replace(/"/g, '""') + '"';
   }

@@ -29,6 +29,46 @@ describe('escapeCSV', () => {
     expect(escapeCSV(0)).toBe('0');
     expect(escapeCSV(true)).toBe('true');
   });
+
+  // ----- CSV formula-injection guard (task #30) -----
+  describe('formula-injection guard', () => {
+    it('prefixes string starting with = with a single quote', () => {
+      expect(escapeCSV('=SUM(A1)')).toBe("'=SUM(A1)");
+    });
+
+    it('prefixes string starting with + with a single quote', () => {
+      expect(escapeCSV('+HYPERLINK("evil","x")')).toBe('"\'+HYPERLINK(""evil"",""x"")"');
+      // The leading quote is added, then the comma/quote rule wraps it.
+    });
+
+    it('prefixes string starting with - with a single quote', () => {
+      expect(escapeCSV('-1+1')).toBe("'-1+1");
+    });
+
+    it('prefixes string starting with @ with a single quote', () => {
+      expect(escapeCSV('@cmd')).toBe("'@cmd");
+    });
+
+    it('prefixes string starting with tab or carriage return', () => {
+      expect(escapeCSV('\tfoo')).toBe("'\tfoo");
+      expect(escapeCSV('\rfoo')).toBe("'\rfoo");
+    });
+
+    it('does NOT prefix negative NUMBERS (scores like -0.4 must stay numeric)', () => {
+      expect(escapeCSV(-0.4)).toBe('-0.4');
+      expect(escapeCSV(-1)).toBe('-1');
+    });
+
+    it('does NOT prefix strings that only contain a risky char mid-value', () => {
+      expect(escapeCSV('a=b')).toBe('a=b');
+      expect(escapeCSV('1+2')).toBe('1+2');
+    });
+
+    it('combines guard + comma/quote escaping', () => {
+      // Has both a leading = AND an embedded comma.
+      expect(escapeCSV('=A,B')).toBe('"\'=A,B"');
+    });
+  });
 });
 
 describe('formatExcelTime', () => {
