@@ -15,24 +15,18 @@
  *
  * @param {Excel.RequestContext} context - Excel context
  */
+/**
+ * Initialize Weekly/Timetable sheet state.
+ *
+ * Historical note: an earlier version of this function auto-detected
+ * lastTimeRow/scoreRow from column B's used range. That was removed
+ * by user request — the CONFIG values (LAST_TIME_ROW=36, SCORE_ROW=38)
+ * are the single source of truth. state.weekly.lastTimeRow/scoreRow
+ * stay at their CONFIG-seeded defaults.
+ *
+ * @param {Excel.RequestContext} context - Excel context
+ */
 async function initializeWeeklySheet(context) {
-  const sheet = context.workbook.worksheets.getItem(CONFIG.WEEKLY_SHEET);
-
-  // Discover last populated row of column B (the time-labels column).
-  // We load both rowIndex (0-based start of the used range) and
-  // rowCount (its height); their sum is the last 1-based row.
-  const timeColumn = sheet.getRange('B:B').getUsedRange();
-  timeColumn.load(['rowIndex', 'rowCount']);
-  await context.sync();
-
-  const detectedLastTimeRow = (timeColumn.rowIndex || 0) + (timeColumn.rowCount || 0);
-  if (detectedLastTimeRow >= CONFIG.WEEKLY.DATA_START_ROW) {
-    state.weekly.lastTimeRow = detectedLastTimeRow;
-    // The score totals row sits one blank row below the last time row.
-    // Preserve the legacy 36 -> 38 relationship via the +2 offset.
-    state.weekly.scoreRow = detectedLastTimeRow + 2;
-  }
-
   // Calculate current day index (0=Mon, 6=Sun)
   const today = new Date();
   const dayOfWeek = today.getDay();
