@@ -138,3 +138,57 @@ async function exportSummaryData() {
 window.initializeSummarySheet = initializeSummarySheet;
 window.updateSummary = updateSummary;
 window.exportSummaryData = exportSummaryData;
+
+/**
+ * Read today's running scores from the Summary sheet.
+ * Returns { positive, negative, total } or null if today's row
+ * isn't recorded yet. Does NOT throw on missing Summary sheet —
+ * returns null instead.
+ *
+ * Uses the same row-lookup as updateSummary, but read-only and
+ * cheap (one sync to find the row, one to read the three cells).
+ *
+ * @param {Excel.RequestContext} context - Excel context owned by caller
+ * @returns {Promise<{positive: number, negative: number, total: number} | null>}
+ */
+async function getTodayScore(context) {
+  const summarySheet = context.workbook.worksheets.getItemOrNullObject(CONFIG.SUMMARY_SHEET);
+  await context.sync();
+  if (summarySheet.isNullObject) return null;
+
+  const todayStr = formatDateYYYYMMDD(new Date());
+  const summaryRange = summarySheet.getRange(
+    `${CONFIG.SUMMARY.DATE_COLUMN}1:${CONFIG.SUMMARY.DATE_COLUMN}${state.weekly.lastSummaryRow + 1}`
+  );
+  summaryRange.load('values');
+  await context.sync();
+
+  let summaryRow = -1;
+  for (let i = 0; i < summaryRange.values.length; i++) {
+    if (String(summaryRange.values[i][0]) === todayStr) {
+      summaryRow = i + 1;
+      break;
+    }
+  }
+  if (summaryRow === -1) return null;
+
+  const posCell = summarySheet.getRange(`${CONFIG.SUMMARY.POSITIVE_SCORE_COLUMN}${summaryRow}`);
+  const negCell = summarySheet.getRange(`${CONFIG.SUMMARY.NEGATIVE_SCORE_COLUMN}${summaryRow}`);
+  const totalCell = summarySheet.getRange(`${CONFIG.SUMMARY.TOTAL_SCORE_COLUMN}${summaryRow}`);
+  posCell.load('values');
+  negCell.load('values');
+  totalCell.load('values');
+  await context.sync();
+
+  const toNumber = (v) => {
+    const n = parseFloat(v);
+    return Number.isFinite(n) ? n : 0;
+  };
+  return {
+    positive: toNumber(posCell.values[0][0]),
+    negative: toNumber(negCell.values[0][0]),
+    total: toNumber(totalCell.values[0][0]),
+  };
+}
+
+window.getTodayScore = getTodayScore;

@@ -28,7 +28,9 @@ export const formatExcelTime = globalThis.formatExcelTime;
 export const escapeCSV = globalThis.escapeCSV;
 export const processWeeklyScoreChange = globalThis.processWeeklyScoreChange;
 export const clearForNewWeek = globalThis.clearForNewWeek;
+// summary.js
 export const updateSummary = globalThis.updateSummary;
+export const getTodayScore = globalThis.getTodayScore;
 export const handleWeeklySelection = globalThis.handleWeeklySelection;
 export const exportSheetAsCSV = globalThis.exportSheetAsCSV;
 

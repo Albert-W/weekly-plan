@@ -197,6 +197,9 @@ async function initializeAddin() {
     // the real clock instead of only updating on user actions.
     startTimeHighlightTicker();
 
+    // Populate the Today's Score widget with the first read.
+    refreshTodayScoreWidget();
+
   } catch (error) {
     console.error('Initialization error:', error);
     console.error('Error stack:', error.stack);

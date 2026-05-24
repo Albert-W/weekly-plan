@@ -136,6 +136,35 @@
 
     .status.success { background: #e8f5e9; color: #2e7d32; }
     .status.error { background: #ffebee; color: #c62828; }
+
+    .today-score {
+      display: flex;
+      justify-content: space-around;
+      gap: 6px;
+      padding: 10px 8px;
+      margin-bottom: 12px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border-radius: 8px;
+      color: white;
+    }
+    .today-score .ts-cell {
+      flex: 1;
+      text-align: center;
+    }
+    .today-score .ts-label {
+      font-size: 10px;
+      opacity: 0.85;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+    .today-score .ts-value {
+      font-size: 18px;
+      font-weight: 700;
+      line-height: 1.1;
+    }
+    .today-score .ts-total .ts-value { font-size: 22px; }
+    .today-score .ts-pos .ts-value { color: #c8f0c8; }
+    .today-score .ts-neg .ts-value { color: #ffcaca; }
     .status.warning { background: #fff3e0; color: #e65100; }
     .status.info { background: #e3f2fd; color: #1565c0; }
 
@@ -379,6 +408,24 @@
       <!-- ==================== WEEKLY/TIMETABLE SECTION ==================== -->
       <div id="weekly-actions" class="card" style="display: none;">
         <h2>📅 Weekly Timetable</h2>
+
+        <!-- Today's Score widget — refreshed on init, sheet activation,
+             score-change, and the background time-highlight ticker. -->
+        <div id="today-score" class="today-score">
+          <div class="ts-cell ts-pos">
+            <div class="ts-label">+ Positive</div>
+            <div class="ts-value" id="ts-pos">—</div>
+          </div>
+          <div class="ts-cell ts-total">
+            <div class="ts-label">Today</div>
+            <div class="ts-value" id="ts-total">—</div>
+          </div>
+          <div class="ts-cell ts-neg">
+            <div class="ts-label">− Negative</div>
+            <div class="ts-value" id="ts-neg">—</div>
+          </div>
+        </div>
+
         <div class="btn-group">
           <button class="btn btn-primary" data-action="random-pick">
             🎲 Random Pick

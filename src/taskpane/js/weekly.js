@@ -397,10 +397,60 @@ let _timeHighlightAlignTimeoutId = null;
 
 /**
  * Run one tick of the auto-highlight. Exported for testing.
+ * Also opportunistically refreshes the Today's Score widget so
+ * the user sees per-minute updates without taking any action.
  */
 async function tickTimeHighlight() {
   if (state.currentSheet !== CONFIG.WEEKLY_SHEET) return;
   await refreshTimeHighlight({ silent: true });
+  await refreshTodayScoreWidget();
+}
+
+// ----------------------------------------------------------------------
+// Today's Score widget — small DOM strip at the top of the Weekly card.
+// Data source: getTodayScore() in summary.js, which reads from the
+// Summary sheet's today row. Refreshed on init, sheet activation,
+// every score change, and the background time-highlight ticker.
+// ----------------------------------------------------------------------
+
+/**
+ * Format a numeric score for display. Two decimals, trimmed of
+ * trailing zeros so "1.50" -> "1.5" and "0" stays "0".
+ */
+function _formatScore(n) {
+  if (!Number.isFinite(n)) return '0';
+  return n.toFixed(2).replace(/\.?0+$/, '') || '0';
+}
+
+/**
+ * Refresh the Today's Score widget in the task pane. Safe to call
+ * when the Summary sheet doesn't exist (renders em-dashes) and when
+ * the widget isn't in the DOM (no-op).
+ */
+async function refreshTodayScoreWidget() {
+  const posEl = document.getElementById('ts-pos');
+  const negEl = document.getElementById('ts-neg');
+  const totalEl = document.getElementById('ts-total');
+  if (!posEl || !negEl || !totalEl) return;
+
+  try {
+    let score = null;
+    await Excel.run(async (ctx) => {
+      score = await getTodayScore(ctx);
+    });
+
+    if (!score) {
+      posEl.textContent = '—';
+      negEl.textContent = '—';
+      totalEl.textContent = '—';
+      return;
+    }
+    posEl.textContent = _formatScore(score.positive);
+    negEl.textContent = _formatScore(score.negative);
+    totalEl.textContent = _formatScore(score.total);
+  } catch (e) {
+    console.error('refreshTodayScoreWidget error:', e);
+  }
 }
 
 /**
@@ -689,6 +739,10 @@ async function processWeeklyScoreChange(context, row, col, newScore) {
     weightedScore < 0 ? weightedScore : 0
   );
 
+  // Surface the fresh running total in the task pane widget.
+  // Fire-and-forget; doesn't block the score-write flow.
+  refreshTodayScoreWidget();
+
   showStatus(
     `📝 "${taskName}" scored: ${weightedScore.toFixed(2)} (Daily: ${newDailyTotal.toFixed(2)})`,
     'success'
@@ -725,6 +779,7 @@ window.startNewWeekFromUI = startNewWeekFromUI;
 window.tickTimeHighlight = tickTimeHighlight;
 window.startTimeHighlightTicker = startTimeHighlightTicker;
 window.stopTimeHighlightTicker = stopTimeHighlightTicker;
+window.refreshTodayScoreWidget = refreshTodayScoreWidget;
 
 // ----------------------------------------------------------------------
 // Sheet-handler registration (dispatched from events.js)
@@ -747,6 +802,10 @@ async function handleWeeklyActivate(context) {
     const weeklySheet = context.workbook.worksheets.getItem(CONFIG.WEEKLY_SHEET);
     await highlightCurrentTimeRow(context, weeklySheet);
   }
+
+  // Refresh the score widget so it reflects today's totals as soon as
+  // the user switches to the Weekly tab.
+  refreshTodayScoreWidget();
 }
 
 /**
