@@ -1,8 +1,15 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { makeFakeExcel } from './mocks/excel.js';
 import { CONFIG, state, formatDateYYYYMMDD, getTodayScore, updateSummary } from './harness.js';
 
 const refreshTodayScoreWidget = globalThis.refreshTodayScoreWidget;
+
+// Pin clock — both setup and getTodayScore call formatDateYYYYMMDD
+// (new Date()); a midnight crossing between the two would produce a
+// today-row-not-found false negative. Task #38.
+const FAKE_NOW = new Date(2024, 0, 1, 15, 30);
+beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(FAKE_NOW); });
+afterEach(() => { vi.useRealTimers(); });
 
 /**
  * Today's-Score widget tests (task #26).

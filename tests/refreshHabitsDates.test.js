@@ -1,6 +1,13 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { makeFakeExcel } from './mocks/excel.js';
 import { CONFIG, state, getMonday } from './harness.js';
+
+// Pin clock — refreshHabitsDates writes today's date number and a
+// 14-day window starting at today's Monday. Cross-midnight runs would
+// otherwise drift between the test's setup and assertion. Task #38.
+const FAKE_NOW = new Date(2024, 0, 1, 15, 30);
+beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(FAKE_NOW); });
+afterEach(() => { vi.useRealTimers(); });
 
 /**
  * refreshHabitsDates integration test.

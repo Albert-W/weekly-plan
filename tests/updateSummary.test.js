@@ -1,6 +1,13 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { makeFakeExcel } from './mocks/excel.js';
 import { CONFIG, state, formatDateYYYYMMDD, updateSummary } from './harness.js';
+
+// Pin clock — updateSummary writes today's row and the assertions
+// expect that row. Cross-midnight runs would otherwise see them
+// disagree. Task #38.
+const FAKE_NOW = new Date(2024, 0, 1, 15, 30);
+beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(FAKE_NOW); });
+afterEach(() => { vi.useRealTimers(); });
 
 /**
  * updateSummary tests.

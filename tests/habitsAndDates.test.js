@@ -1,9 +1,17 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { makeFakeExcel } from './mocks/excel.js';
 import { CONFIG } from './harness.js';
 
 const findHabitsDayIndex = globalThis.findHabitsDayIndex;
 const setNewWeekDates = globalThis.setNewWeekDates;
+
+// Pin wall clock: Mon Jan 1 2024 15:30. Cross-midnight runs of
+// tests below would otherwise see today.getDate() differ from
+// the value seeded into days[3]. Task #38.
+const FAKE_NOW = new Date(2024, 0, 1, 15, 30);
+
+beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(FAKE_NOW); });
+afterEach(() => { vi.useRealTimers(); });
 
 /**
  * findHabitsDayIndex returns 0..13 if today's day-of-month matches a

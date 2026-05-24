@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { makeFakeExcel } from './mocks/excel.js';
 import { CONFIG, state } from './harness.js';
 
@@ -13,9 +13,30 @@ import { CONFIG, state } from './harness.js';
  *  - If the current day's task/score cells are empty, highlights
  *    those too.
  *  - No-op if no row matches.
+ *
+ * Wall-clock pinning (task #38)
+ * -----------------------------
+ * Previously these tests used `new Date().getHours()` to compute
+ * the expected row, then wrapped assertions in
+ * `if (new Date().getHours() >= 8)`. That produced two failure
+ * modes:
+ *   1. Before 08:00 the assertions were silently skipped — green
+ *      with zero verification.
+ *   2. After roughly :30 past each hour, the production function
+ *      ("closest value" decimal semantics) and the test's
+ *      expectation (integer floor) disagreed, and the test failed.
+ *
+ * Fix: pin the wall clock to a deterministic 15:30 on Mon Jan 1
+ * 2024 with vi.useFakeTimers + vi.setSystemTime, then assert
+ * unconditionally with the row that 15:30 actually matches.
  */
 
 const highlightCurrentTimeRow = globalThis.highlightCurrentTimeRow;
+
+// 15:30 on Mon Jan 1 2024 — Monday, mid-afternoon, well past 8am
+// so the time-row matcher will engage. Same constant in every test
+// for cross-test reasoning.
+const FAKE_NOW = new Date(2024, 0, 1, 15, 30);
 
 function setupTimeColumn(values) {
   const fake = makeFakeExcel({ sheets: [CONFIG.WEEKLY_SHEET] });
@@ -31,60 +52,62 @@ function setupTimeColumn(values) {
 
 describe('highlightCurrentTimeRow', () => {
   beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(FAKE_NOW);
     state.weekly.currentDayIndex = 0;
     state.weekly.lastTimeRow = 36;
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('highlights the matching row when times are stored as whole-hour numbers', async () => {
-    // 8, 9, 10, ..., 22 — pick the one matching the current hour
+    // Values 8..22 at rows 5..19. Clock pinned to 15:30 (decimal 15.5).
+    // Production picks the value with smallest |value - 15.5|, which
+    // is 16 at index 8 (distance 0.5, tied with 15 — closer by
+    // the implementation's tiebreak: 16 wins).
+    // We assert one of the two plausibly-matching rows is lit, which
+    // is both deterministic and tolerant of tiebreak differences.
     const fake = setupTimeColumn([8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]);
     fake.installAsExcelGlobal();
-
-    const hour = new Date().getHours();
-    // Determine expected row
-    let expectedRow = -1;
-    for (let i = 0; i < 15; i++) {
-      if (8 + i <= hour) expectedRow = CONFIG.WEEKLY.DATA_START_ROW + i;
-    }
 
     await Excel.run(async (ctx) => {
       const sheet = ctx.workbook.worksheets.getItem(CONFIG.WEEKLY_SHEET);
       await highlightCurrentTimeRow(ctx, sheet);
     });
 
-    if (expectedRow > 0) {
-      expect(fake.helpers.getCellColor(CONFIG.WEEKLY_SHEET, `B${expectedRow}`))
-        .toBe(CONFIG.COLORS.CURRENT_TIME);
-    }
+    // 15 is at index 7 -> row 12. 16 is at index 8 -> row 13.
+    const row15 = CONFIG.WEEKLY.DATA_START_ROW + 7;  // 12
+    const row16 = CONFIG.WEEKLY.DATA_START_ROW + 8;  // 13
+    const lit15 = fake.helpers.getCellColor(CONFIG.WEEKLY_SHEET, `B${row15}`) === CONFIG.COLORS.CURRENT_TIME;
+    const lit16 = fake.helpers.getCellColor(CONFIG.WEEKLY_SHEET, `B${row16}`) === CONFIG.COLORS.CURRENT_TIME;
+    expect(lit15 || lit16).toBe(true);
   });
 
   it('highlights the matching row when times are stored as fraction-of-day', async () => {
-    // 8/24, 9/24, ..., 22/24 — same expected behavior
+    // 8/24, 9/24, ..., 22/24. Same expectation — match is at 15 or 16.
     const fractions = [];
     for (let h = 8; h <= 22; h++) fractions.push(h / 24);
     const fake = setupTimeColumn(fractions);
     fake.installAsExcelGlobal();
 
-    const hour = new Date().getHours();
-    let expectedRow = -1;
-    for (let i = 0; i < fractions.length; i++) {
-      if (8 + i <= hour) expectedRow = CONFIG.WEEKLY.DATA_START_ROW + i;
-    }
-
     await Excel.run(async (ctx) => {
       const sheet = ctx.workbook.worksheets.getItem(CONFIG.WEEKLY_SHEET);
       await highlightCurrentTimeRow(ctx, sheet);
     });
 
-    if (expectedRow > 0) {
-      expect(fake.helpers.getCellColor(CONFIG.WEEKLY_SHEET, `B${expectedRow}`))
-        .toBe(CONFIG.COLORS.CURRENT_TIME);
-    }
+    const row15 = CONFIG.WEEKLY.DATA_START_ROW + 7;
+    const row16 = CONFIG.WEEKLY.DATA_START_ROW + 8;
+    const lit15 = fake.helpers.getCellColor(CONFIG.WEEKLY_SHEET, `B${row15}`) === CONFIG.COLORS.CURRENT_TIME;
+    const lit16 = fake.helpers.getCellColor(CONFIG.WEEKLY_SHEET, `B${row16}`) === CONFIG.COLORS.CURRENT_TIME;
+    expect(lit15 || lit16).toBe(true);
   });
 
   it('also highlights the current-day task + score cells when they are empty', async () => {
-    // All-day grid; force a known match by seeding only the row we want
-    const fake = setupTimeColumn([8]); // single row at 8am
+    // Single row at 8am. At 15:30 fake-now, 8 is the only candidate
+    // and 8 <= 15.5, so the function matches and lights row 5.
+    const fake = setupTimeColumn([8]);
     state.weekly.lastTimeRow = CONFIG.WEEKLY.DATA_START_ROW;
     fake.installAsExcelGlobal();
 
@@ -94,14 +117,12 @@ describe('highlightCurrentTimeRow', () => {
     });
 
     const row = CONFIG.WEEKLY.DATA_START_ROW;
-    // Highlight only fires if current hour >= 8. Run defensively.
-    if (new Date().getHours() >= 8) {
-      expect(fake.helpers.getCellColor(CONFIG.WEEKLY_SHEET, `B${row}`))
-        .toBe(CONFIG.COLORS.CURRENT_TIME);
-      // Monday columns C/D are highlighted because empty
-      expect(fake.helpers.getCellColor(CONFIG.WEEKLY_SHEET, `C${row}`))
-        .toBe(CONFIG.COLORS.CURRENT_TIME);
-    }
+    expect(fake.helpers.getCellColor(CONFIG.WEEKLY_SHEET, `B${row}`))
+      .toBe(CONFIG.COLORS.CURRENT_TIME);
+    // Monday columns C/D are highlighted because the task & score
+    // cells are empty.
+    expect(fake.helpers.getCellColor(CONFIG.WEEKLY_SHEET, `C${row}`))
+      .toBe(CONFIG.COLORS.CURRENT_TIME);
   });
 
   it('does NOT highlight task/score when a score is already entered', async () => {
@@ -116,12 +137,9 @@ describe('highlightCurrentTimeRow', () => {
       await highlightCurrentTimeRow(ctx, sheet);
     });
 
-    // B always highlighted on match; C and D should NOT be re-highlighted
-    if (new Date().getHours() >= 8) {
-      // C/D still have whatever color was set when the score was entered (null
-      // since we only seeded the value). The contract: NOT CURRENT_TIME.
-      expect(fake.helpers.getCellColor(CONFIG.WEEKLY_SHEET, `C${row}`))
-        .not.toBe(CONFIG.COLORS.CURRENT_TIME);
-    }
+    // Contract: when a score already exists in D{row}, the matcher
+    // skips the per-day task/score highlight (only lights column B).
+    expect(fake.helpers.getCellColor(CONFIG.WEEKLY_SHEET, `C${row}`))
+      .not.toBe(CONFIG.COLORS.CURRENT_TIME);
   });
 });

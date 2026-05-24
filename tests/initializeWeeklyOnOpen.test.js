@@ -1,9 +1,14 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { makeFakeExcel } from './mocks/excel.js';
 import {
   CONFIG, state, formatDateYYYYMMDD, getMonday,
   initializeWeeklyOnOpen,
 } from './harness.js';
+
+// Pin wall clock — Mon Jan 1 2024 15:30. Cross-midnight / cross-week
+// runs would otherwise see formatDateYYYYMMDD(today) drift between
+// the test's setup and assertion. Task #38.
+const FAKE_NOW = new Date(2024, 0, 1, 15, 30);
 
 /**
  * initializeWeeklyOnOpen is the per-open orchestrator. It:
@@ -36,7 +41,13 @@ function setupOpenedSheet({ b4, d4 }) {
 
 describe('initializeWeeklyOnOpen', () => {
   beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(FAKE_NOW);
     state.weekly.lastInitDate = null;
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('first-time use: no valid date in B4 -> sets new-week dates', async () => {
