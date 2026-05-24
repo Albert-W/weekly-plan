@@ -54,3 +54,6 @@ export const initializeHabitsSheet = globalThis.initializeHabitsSheet;
 
 // ui.js
 export const addTask = globalThis.addTask;
+export const showModal = globalThis.showModal;
+export const showWarningPopup = globalThis.showWarningPopup;
+export const showInfoPopup = globalThis.showInfoPopup;

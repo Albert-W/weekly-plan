@@ -159,9 +159,20 @@ function showModal(title, message, type) {
     existingModal.remove();
   }
 
-  // Create modal HTML
+  const colors = {
+    warning: '#e65100',
+    error: '#c62828',
+    success: '#2e7d32',
+    info: '#1565c0',
+  };
+  const accent = colors[type] || colors.info;
+
+  // Backdrop
   const modal = document.createElement('div');
   modal.id = 'custom-modal';
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-labelledby', 'custom-modal-title');
   modal.style.cssText = `
     position: fixed;
     top: 0;
@@ -175,60 +186,60 @@ function showModal(title, message, type) {
     z-index: 9999;
   `;
 
-  const colors = {
-    warning: '#e65100',
-    error: '#c62828',
-    success: '#2e7d32',
-    info: '#1565c0'
-  };
-
-  const bgColors = {
-    warning: '#fff3e0',
-    error: '#ffebee',
-    success: '#e8f5e9',
-    info: '#e3f2fd'
-  };
-
-  modal.innerHTML = `
-    <div style="
-      background: white;
-      border-radius: 12px;
-      padding: 20px;
-      max-width: 280px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-      text-align: center;
-    ">
-      <div style="
-        font-size: 18px;
-        font-weight: bold;
-        color: ${colors[type] || colors.info};
-        margin-bottom: 12px;
-      ">${title}</div>
-      <div style="
-        font-size: 14px;
-        color: #333;
-        margin-bottom: 16px;
-        line-height: 1.4;
-      ">${message}</div>
-      <button id="modal-ok-btn" style="
-        background: ${colors[type] || colors.info};
-        color: white;
-        border: none;
-        padding: 10px 30px;
-        border-radius: 8px;
-        font-size: 14px;
-        font-weight: bold;
-        cursor: pointer;
-      ">OK</button>
-    </div>
+  // Inner card
+  const card = document.createElement('div');
+  card.style.cssText = `
+    background: white;
+    border-radius: 12px;
+    padding: 20px;
+    max-width: 280px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    text-align: center;
   `;
 
-  document.body.appendChild(modal);
+  // Title — textContent prevents HTML injection via the title arg.
+  const titleEl = document.createElement('div');
+  titleEl.id = 'custom-modal-title';
+  titleEl.style.cssText = `
+    font-size: 18px;
+    font-weight: bold;
+    color: ${accent};
+    margin-bottom: 12px;
+  `;
+  titleEl.textContent = title;
 
-  // Close on button click
-  document.getElementById('modal-ok-btn').addEventListener('click', () => {
-    modal.remove();
-  });
+  // Message — textContent prevents HTML injection via the message arg.
+  const msgEl = document.createElement('div');
+  msgEl.style.cssText = `
+    font-size: 14px;
+    color: #333;
+    margin-bottom: 16px;
+    line-height: 1.4;
+  `;
+  msgEl.textContent = message;
+
+  // OK button
+  const okBtn = document.createElement('button');
+  okBtn.id = 'modal-ok-btn';
+  okBtn.type = 'button';
+  okBtn.textContent = 'OK';
+  okBtn.style.cssText = `
+    background: ${accent};
+    color: white;
+    border: none;
+    padding: 10px 30px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: bold;
+    cursor: pointer;
+  `;
+  okBtn.addEventListener('click', () => modal.remove());
+
+  card.appendChild(titleEl);
+  card.appendChild(msgEl);
+  card.appendChild(okBtn);
+  modal.appendChild(card);
+  document.body.appendChild(modal);
 
   // Close on backdrop click
   modal.addEventListener('click', (e) => {
@@ -255,6 +266,7 @@ window.promptSaveFile = promptSaveFile;
 window.remindToSave = remindToSave;
 window.showWarningPopup = showWarningPopup;
 window.showInfoPopup = showInfoPopup;
+window.showModal = showModal;
 
 /**
  * Run an async function and surface failures through showStatus.
