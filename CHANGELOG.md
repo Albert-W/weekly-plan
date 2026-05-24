@@ -2,6 +2,141 @@
 
 All notable changes to the Weekly Plan add-in. Newest first.
 
+## 2026-05-23 — 2026-05-24 — Test expansion, UI cleanup, correctness fire-drill
+
+Three smaller waves rolled together after the initial refactor: more test
+coverage, a UI audit-and-cleanup pass, and a post-refactor code review
+that turned up four real bugs the first pass missed.
+
+### TL;DR metrics (delta from previous changelog entry)
+
+| Dimension                 | Then       | Now                        |
+|---------------------------|------------|----------------------------|
+| Source files              | 12         | **13** (+ `concurrency.js`) |
+| Source lines              | 2,769      | **2,997** (+228)            |
+| Test files                | 14         | **27** (+13)                |
+| Tests                     | 81         | **153** (+72)               |
+| Test lines                | ~1,323     | **2,679** (+1,356)          |
+| Above-the-fold pane chrome | ~150 px   | **~60 px** (−60%)          |
+| Today's score visibility  | hidden (row 38) | **always on top of Weekly card** |
+| Race vulnerability (RMW)  | open       | **closed + regression test pinned** |
+| CSV formula injection     | exploitable | **guarded + 8 prefix tests** |
+| `showModal` HTML injection | open      | **textContent + ARIA role=dialog** |
+| Sheet-driven grid extent  | never executed at runtime | **wired into `initializeWeeklyOnOpen`** |
+
+### Commits (newest first)
+
+| Commit  | What | Wave |
+|---------|------|------|
+| `dbb05bd` | **[H4] Serialize per-sheet handlers** to fix RMW races (queue approach) | Correctness |
+| `e83d689` | **[M11]** `columnLetterToIndex` fix for multi-letter columns; drop "broken" test pin | Correctness |
+| `909f274` | **[H3]** `showModal`: replace `innerHTML` with safe DOM construction (XSS defense) | Correctness |
+| `f5d5d56` | **[H2]** `escapeCSV`: guard against CSV formula injection (OWASP) | Correctness |
+| `e4d6746` | **[H1]** Wire `initializeWeeklySheet` into `initializeWeeklyOnOpen` — task #9 is no longer dead | Correctness |
+| `6611464` | Footer: replace inaccurate "Works on Desktop, Web & Mobile" with honest status | UI |
+| `9e444ba` | Add **Today's Score widget** to the task pane | UI |
+| `1d78f8d` | Tighten task pane layout: inline status, merge sheet into title | UI |
+| `4c604f0` | Remove dead UI: Save button, Delete panel, Thank panel | UI |
+| `ef4288f` | Add 13 more tests covering init orchestrators and DOM-form integration | Tests |
+| `6eccf3e` | Add 27 more tests across 6 new files covering previously-untested behavior | Tests |
+
+### Wave 1 — Test expansion (+40 tests)
+
+Audited every `src/` function against existing tests, identified the
+highest-leverage gaps, and added focused integration tests for:
+
+- `randomPick` — fills only empty slots, preserves user tasks, no-op on rows without time labels, routes per `currentDayIndex`, no-op on empty Tasks list.
+- `highlightCurrentTimeRow` — whole-hour values, fraction-of-day values, score-cell highlighting only when empty.
+- `findHabitsDayIndex` + `setNewWeekDates` — date lookups and header writes.
+- `updateSummary` — new-row creation, accumulation, +/- routing, missing-sheet no-op.
+- `exportSheetAsCSV` — serialization, time formatting, comma/quote escaping, missing-sheet handling.
+- `sheetSelection` — Habits column-A click, Weekly task/score click contracts (3 scenarios each).
+- `initializeHabitsSheet` + `highlightCurrentDay` — auto-refresh when today missing, header highlight cleanup.
+- `refreshTimeHighlight` — silent flag, missing-sheet branch.
+- `addTask` — DOM form integration (happy path, empty name, bad weight).
+- `initializeWeeklyOnOpen` — first-time, same-week, new-week detection.
+
+While writing these, surfaced and fixed a real fake-Excel gap: `getOffsetRange`/`getUsedRange` returned `Range` objects that bypassed `attachValuesSetter()`, so subsequent writes silently didn't queue. The fake now treats both paths identically.
+
+### Wave 2 — UI cleanup (5 commits, 1 new feature)
+
+After a UI audit identified dead elements, layout waste, and a missing core feature:
+
+- **Removed dead UI.** Save button (its toast duplicated the static note below it). Delete button + panel (just told you to use the Tasks sheet manually — not a feature). Thank panel (orphan: no in-pane button opened it). Plus the corresponding `CONFIG.WEEKLY.BUTTONS.DELETE`/`THANK` entries and their sheet-side handlers.
+- **Tightened the layout.** Inline status banner (was a whole card). Merged "Current Sheet" indicator into the H1 title ("Weekly Plan · Habits"). Dropped "Common Actions" card wrapper. ~90 vertical pixels reclaimed above the fold.
+- **NEW: Today's Score widget.** Three-cell strip (`+ POSITIVE  |  TODAY  |  − NEGATIVE`) at the top of the Weekly card. Surfaces what the whole add-in is *for*. Refreshes on: init, sheet activation, every score change, and the background time-highlight ticker (free — already running every minute). Backed by a new read-only `getTodayScore(context)` in `summary.js`.
+- **Honest footer.** Replaced "Works on Desktop, Web & Mobile" with "Best on Excel Online • Desktop supported (CSV via clipboard)" — accurate to the post-#22 reality (Desktop CSV uses clipboard fallback; mobile is untested).
+
+### Wave 3 — Correctness fire-drill (the post-refactor audit)
+
+A fresh code-review audit flagged 15 items, including **four high-severity bugs** the original refactor missed. All four are now closed and pinned by regression tests.
+
+#### [H1] `initializeWeeklySheet` was never called from production
+
+The CHANGELOG bragged about "Sheet-driven grid extent" — that `state.weekly.lastTimeRow/scoreRow/currentDayIndex/lastMonday` were detected from the actual sheet at init. **They weren't.** The detector was defined and tested but never invoked. In real Excel, those fields kept their CONFIG defaults forever. Any user who extended the time grid past row 36 hit silent truncation in five different code paths.
+
+Fix: one `await initializeWeeklySheet(context)` at the top of `initializeWeeklyOnOpen`, plus removal of a dead `B:B` getUsedRange block that loaded the value and threw it away. Net +1 useful line, ~10 dead lines deleted. New regression test seeds B5..B50 and asserts `lastTimeRow === 50`.
+
+#### [H2] CSV formula injection
+
+`escapeCSV` handled `, " \n` but not `= + - @ \t \r`. A task literally named `=HYPERLINK("http://evil","go")` would execute when the user opened the exported CSV — classic OWASP CSV-injection.
+
+Fix: prefix string-typed values starting with risky chars with a single quote. The `typeof value === 'string'` gate is critical — without it, numeric scores like `-0.4` would be turned into the literal text `'-0.4` and break downstream analysis. 8 new tests pin both the guard and the numeric-preservation contract.
+
+#### [H3] `showModal` interpolated into `innerHTML`
+
+`modal.innerHTML = \`... ${title} ... ${message} ...\`` — caller-controlled strings going straight into HTML. All current callers passed static strings, but the API was XSS-by-design.
+
+Fix: rebuild with `createElement` + `textContent` for the title and message slots. As a bonus, added `role="dialog"`, `aria-modal="true"`, and `aria-labelledby` (partial credit toward the a11y task). 8 new tests including the canonical `<img src=x onerror=alert(1)>` payload-as-text assertion.
+
+#### [H4] Read-modify-write race in score/habit handlers
+
+Three handlers (`recordHabitDone`, `processWeeklyScoreChange`, `updateSummary`) all do load-then-add-then-write. Office.js fires `onChanged` per cell, and may dispatch handlers concurrently when the user pastes or types fast. Two handlers can each read `X`, each write `X + delta`, losing one increment. Tests ran handlers serially so this never surfaced.
+
+Fix: new `src/taskpane/js/concurrency.js` exposing `serializeSheetWrite(sheetName, fn)`. Per-sheet `Map` of Promise chains — same sheet serializes, different sheets parallelize. `.catch(() => {})` keeps the chain alive after a thrown handler. Wrapped in `events.js#handleSelectionChanged` and `#handleCellChanged` at the outer level so the entire handler lifecycle is serialized. The three RMW function bodies are untouched.
+
+**Strongest evidence the test is real:** temporarily replaced `serializeSheetWrite`'s body with `return fn();` and re-ran the suite. Both new race regression tests **failed**, as expected. Restored.
+
+#### Pattern bonus: [M11] `columnLetterToIndex` for multi-letter columns
+
+`columnLetterToIndex('AA')` returned 0 (same as 'A'), because the math treated A=0 instead of base-26-with-no-zero. The bug was pinned by a test with the comment "currently broken". Today's grid stops at column Q so the bug didn't bite — but task #9 introduces a real risk of growth past Z.
+
+Fix: standard base-26-with-no-zero algorithm. Removed the "broken on purpose" comment, replaced with an exhaustive **round-trip property test** that asserts `columnLetterToIndex(indexToColumnLetter(i)) === i` for all 702 single+double-letter columns.
+
+### Lesson: a test pinning a known bug is worse than no test
+
+Three of the Wave-3 items (H1, M11) were *originally noted* in earlier work but ratified rather than fixed:
+- H1 had a comment `// Using fixed values from CONFIG instead of dynamic calculation`.
+- M11 had a test comment `// NOTE: columnLetterToIndex is currently broken for multi-letter`.
+
+A test that knowingly asserts a buggy behavior makes the bug *harder* to fix — the next person reverts your fix because the test "regressed." The cleanup pattern: fix the production code, replace the pin with a proper assertion, and add an exhaustive property test (round-trips, parameterized inputs) when possible.
+
+### Architectural patterns introduced
+
+- **`serializeSheetWrite(sheetName, fn)`** — per-resource async write queue, swallowing rejections to keep the chain alive. Reusable for any future RMW pattern.
+- **Wrap at the boundary, not the body.** The race fix lives at the dispatch site (`events.js`), so handler functions stay ignorant of concurrency. Same shape as `withStatus`: the cross-cutting concern lives in the wrapper, not the wrapped.
+- **Property tests for invertible functions.** `columnLetterToIndex` now has an exhaustive sweep instead of a handful of point assertions.
+
+### What's still on the post-audit backlog
+
+Wave-A correctness items are all closed. Remaining backlog (filed as tasks #33–#43) is all pattern/quality polish — none risk silent data loss or security exploits:
+
+- Removing 5 dead exports.
+- Replacing `'C5:Z...'` magic in `clearForNewWeek` with derived CONFIG.
+- Replacing the `app.js` try/catch wall with a `safeInit` helper.
+- Awaiting `refreshTodayScoreWidget` everywhere (no more fire-and-forget).
+- Batching `updateSummary` to 2 syncs + tightening the placeholder `<=7` perf guards.
+- Fake timers in time-of-day-dependent tests.
+- README refresh against the 13-file actual layout.
+- Full a11y attribute pass.
+- Misc orphan-JSDoc and duplicate-helper cleanup.
+
+### Verification
+
+`npm test` → **153/153 pass**, 27 test files, ~5 seconds on Node 22 with Vitest 2.1 + jsdom 25.
+
+---
+
 ## 2026-05-21 — 2026-05-22 — Refactor wave
 
 A two-day cleanup pass that took the add-in from "works in production but
