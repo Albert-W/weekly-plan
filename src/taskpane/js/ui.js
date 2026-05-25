@@ -214,6 +214,10 @@ function showModal(title, message, type) {
   modal.appendChild(card);
   document.body.appendChild(modal);
 
+  // Move keyboard focus into the dialog so Enter / Space dismisses
+  // it. Pairs with role="dialog" / aria-modal="true" set above.
+  okBtn.focus();
+
   // Close on backdrop click
   modal.addEventListener('click', (e) => {
     if (e.target === modal) {

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -349,7 +349,7 @@
         <span class="calendar-icon"><span class="date-num" id="date-num"></span></span>
         Weekly Plan<span class="sheet-name" id="current-sheet-suffix"></span>
       </h1>
-      <button class="btn btn-success btn-icon" data-action="refresh" title="Refresh current sheet">
+      <button class="btn btn-success btn-icon" data-action="refresh" title="Refresh current sheet" aria-label="Refresh current sheet">
         🔄
       </button>
     </div>
@@ -360,7 +360,7 @@
 
     <main id="app-body">
       <!-- Inline status banner -->
-      <div id="status" class="status">Initializing...</div>
+      <div id="status" class="status" role="status" aria-live="polite">Initializing...</div>
       <p id="save-note" style="font-size: 10px; color: #888; margin: 0; text-align: center;">
         💾 Excel Online auto-saves. Desktop: Ctrl+S / Cmd+S
       </p>
@@ -411,7 +411,7 @@
 
         <!-- Today's Score widget — refreshed on init, sheet activation,
              score-change, and the background time-highlight ticker. -->
-        <div id="today-score" class="today-score">
+        <div id="today-score" class="today-score" role="group" aria-label="Today's score" aria-live="polite">
           <div class="ts-cell ts-pos">
             <div class="ts-label">+ Positive</div>
             <div class="ts-value" id="ts-pos">—</div>
