@@ -115,11 +115,6 @@ async function updateSummary(context, positiveScore, negativeScore) {
 // ============================================================================
 
 /**
- * Archive the current week's data and start a new week
- * This exports data as CSV, then clears for new week
- */
-
-/**
  * Export Summary sheet data as CSV
  */
 async function exportSummaryData() {

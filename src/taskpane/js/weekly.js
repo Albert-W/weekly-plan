@@ -6,16 +6,6 @@
  */
 
 /**
- * Initialize Weekly/Timetable sheet data.
- * Detects the grid extent (last time row + score totals row) from
- * the actual sheet so the layout can change without code edits.
- *
- * Fallback: if detection fails or returns nothing usable, keep the
- * CONFIG defaults already on state.weekly.
- *
- * @param {Excel.RequestContext} context - Excel context
- */
-/**
  * Initialize Weekly/Timetable sheet state.
  *
  * Historical note: an earlier version of this function auto-detected
@@ -417,11 +407,6 @@ function _formatScore(n) {
   return n.toFixed(2).replace(/\.?0+$/, '') || '0';
 }
 
-/**
- * Refresh the Today's Score widget in the task pane. Safe to call
- * when the Summary sheet doesn't exist (renders em-dashes) and when
- * the widget isn't in the DOM (no-op).
- */
 /**
  * Refresh the Today's Score widget in the task pane. Safe to call
  * when the Summary sheet doesn't exist (renders em-dashes) and when

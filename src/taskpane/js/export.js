@@ -227,17 +227,6 @@ async function archiveWeekAutomatically() {
 }
 
 /**
- * Initialize Tasks sheet data
- * @param {Excel.RequestContext} context - Excel context
- */
-
-/**
- * Export current week data to CSV format.
- * Thin wrapper over buildWeeklyCSV that owns its own Excel.run.
- * @returns {Promise<{csv: string, filename: string} | null>}
- */
-
-/**
  * Export a single sheet as CSV
  * @param {string} sheetName - Name of the sheet to export
  * @returns {string|null} CSV content or null if sheet not found
@@ -264,12 +253,11 @@ async function exportSheetAsCSV(sheetName) {
       // Convert entire used range to CSV (preserving exact layout)
       for (const row of usedRange.values) {
         csvContent += row.map(cell => {
-          // Format time values properly
+          // Excel stores time-of-day as a fraction of a day (e.g. 0.625 = 15:00).
+          // Reformat those as "HH:MM" via the shared helper; everything else
+          // goes through escapeCSV. Task #43 — was an inline reimplementation.
           if (typeof cell === 'number' && cell > 0 && cell < 1) {
-            // This is likely a time value (Excel stores time as fraction of day)
-            const hours = Math.floor(cell * 24);
-            const mins = Math.round((cell * 24 - hours) * 60);
-            return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+            return formatExcelTime(cell);
           }
           return escapeCSV(cell);
         }).join(',') + '\n';
@@ -283,12 +271,6 @@ async function exportSheetAsCSV(sheetName) {
     return null;
   }
 }
-
-/**
- * Download base64 content as an XLSX file
- * @param {string} base64Content - Base64 encoded workbook content
- * @param {string} filename - Filename for download
- */
 
 /**
  * Export all important sheets as separate CSV files for backup

@@ -25,8 +25,16 @@ Office.onReady((info) => {
     initializeAddin();
   } else {
     console.log('Not running in Excel, host is:', info.host);
-    document.getElementById('sideload-msg').innerHTML =
-      '<p>This add-in only works in Excel.<br>Host detected: ' + (info.host || 'None') + '</p>';
+    // textContent on a fresh <p> child instead of innerHTML —
+    // info.host is from Office (safe) but no need to leave a
+    // string-to-HTML coercion sink in the codebase. Task #43.
+    const msgEl = document.getElementById('sideload-msg');
+    msgEl.textContent = '';
+    const para = document.createElement('p');
+    para.append('This add-in only works in Excel.');
+    para.append(document.createElement('br'));
+    para.append('Host detected: ' + (info.host || 'None'));
+    msgEl.appendChild(para);
   }
 });
 
@@ -166,6 +174,9 @@ async function initializeAddin() {
     // Start the background ticker so the time-row highlight follows
     // the real clock instead of only updating on user actions.
     startTimeHighlightTicker();
+    // Stop the ticker when the task pane unloads so the next reload
+    // doesn't stack handlers (task #43).
+    window.addEventListener('beforeunload', stopTimeHighlightTicker);
 
     // Populate the Today's Score widget with the first read.
     refreshTodayScoreWidget();
