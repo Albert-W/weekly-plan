@@ -173,17 +173,23 @@ async function clearForNewWeek(context) {
     const sheet = context.workbook.worksheets.getItem(CONFIG.WEEKLY_SHEET);
     const dataStart = CONFIG.WEEKLY.DATA_START_ROW;
     const dataEnd = state.weekly.scoreRow - 1;
+    // Derive corner column letters from the day-column helpers so the
+    // address strings stay correct if the Weekly grid ever shifts.
+    // firstCol = Monday's task column ('C'); lastCol = Sunday's score
+    // column ('P'). Task #34 — no more bare 'C5' / 'Z' / 'P' literals.
+    const firstCol = getTaskColLetterForDay(0);
+    const lastCol = getScoreColLetterForDay(CONFIG.WEEKLY.DAYS_IN_WEEK - 1);
 
     // ----------------------------------------------------------------
     // 1. Queue unconditional clears + the bulk read, then sync ONCE.
     //    All of these ride on the same round-trip as the values read.
     // ----------------------------------------------------------------
-    sheet.getRange(`C5:Z${state.weekly.scoreRow}`).format.fill.clear();
+    sheet.getRange(`${firstCol}${dataStart}:${lastCol}${state.weekly.scoreRow}`).format.fill.clear();
     sheet
-      .getRange(`C${state.weekly.scoreRow}:P${state.weekly.scoreRow}`)
+      .getRange(`${firstCol}${state.weekly.scoreRow}:${lastCol}${state.weekly.scoreRow}`)
       .clear(Excel.ClearApplyTo.contents);
 
-    const dataRange = sheet.getRange(`C${dataStart}:P${dataEnd}`);
+    const dataRange = sheet.getRange(`${firstCol}${dataStart}:${lastCol}${dataEnd}`);
     dataRange.load('values');
     await context.sync();
 
@@ -249,7 +255,7 @@ async function highlightCurrentDay(context, sheet) {
 async function highlightCurrentTimeRow(context, sheet) {
   try {
     // Clear previous time highlighting
-    sheet.getRange('B5:B' + state.weekly.lastTimeRow).format.fill.clear();
+    sheet.getRange(`B${CONFIG.WEEKLY.DATA_START_ROW}:B${state.weekly.lastTimeRow}`).format.fill.clear();
 
     // Get current time as decimal (e.g., 15.75 for 15:45)
     const now = new Date();
