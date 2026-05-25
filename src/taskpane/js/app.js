@@ -120,65 +120,35 @@ async function initializeAddin() {
       state.currentSheet = detectedSheetName;
       console.log('Active sheet:', state.currentSheet);
 
-      // Step 3: Initialize sheet-specific data (optional - don't fail if sheets don't exist)
-      try {
-        if (sheetNames.includes(CONFIG.HABITS_SHEET)) {
-          await initializeHabitsSheet(context);
-        }
-      } catch (e) {
-        console.log('Habits sheet init skipped:', e.message);
+      // Step 3: Initialize sheet-specific data (optional — don't
+      // fail if a sheet is missing). safeInit logs + swallows.
+      if (sheetNames.includes(CONFIG.HABITS_SHEET)) {
+        await safeInit('Habits sheet init skipped', () => initializeHabitsSheet(context));
+      }
+      if (sheetNames.includes(CONFIG.WEEKLY_SHEET)) {
+        await safeInit('Weekly sheet init skipped', () => initializeWeeklyOnOpen(context));
+      }
+      if (sheetNames.includes(CONFIG.TASKS_SHEET)) {
+        await safeInit('Tasks sheet init skipped', () => initializeTasksSheet(context));
+      }
+      if (sheetNames.includes(CONFIG.SUMMARY_SHEET)) {
+        await safeInit('Summary sheet init skipped', () => initializeSummarySheet(context));
       }
 
-      try {
-        if (sheetNames.includes(CONFIG.WEEKLY_SHEET)) {
-          await initializeWeeklyOnOpen(context);
-        }
-      } catch (e) {
-        console.log('Weekly sheet init skipped:', e.message);
-      }
-
-      try {
-        if (sheetNames.includes(CONFIG.TASKS_SHEET)) {
-          await initializeTasksSheet(context);
-        }
-      } catch (e) {
-        console.log('Tasks sheet init skipped:', e.message);
-      }
-
-      try {
-        if (sheetNames.includes(CONFIG.SUMMARY_SHEET)) {
-          await initializeSummarySheet(context);
-        }
-      } catch (e) {
-        console.log('Summary sheet init skipped:', e.message);
-      }
-
-      // Step 4: Try to register sheet change event (may not be supported in all versions)
-      try {
+      // Step 4: Register sheet-change / selection / cell-change events.
+      // Older Office hosts may not support all of these — swallow + log.
+      await safeInit('Sheet activation event not supported', async () => {
         context.workbook.worksheets.onActivated.add(handleSheetActivated);
         await context.sync();
-        console.log('Sheet activation event registered');
-      } catch (e) {
-        console.log('Sheet activation event not supported:', e.message);
-      }
-
-      // Step 5: Register selection changed event
-      try {
+      });
+      await safeInit('Selection changed event failed', async () => {
         await registerSelectionChangedEvent(context, activeSheet);
         await context.sync();
-        console.log('Selection changed event registered');
-      } catch (e) {
-        console.log('Selection changed event failed:', e.message);
-      }
-
-      // Step 6: Register cell changed event (for score tracking)
-      try {
+      });
+      await safeInit('Cell changed event not supported', async () => {
         await registerOnChangedEvent(context, activeSheet);
         await context.sync();
-        console.log('Cell changed event registered');
-      } catch (e) {
-        console.log('Cell changed event not supported:', e.message);
-      }
+      });
     });
 
     console.log('Excel.run completed, sheet name:', detectedSheetName);
@@ -249,14 +219,13 @@ async function refreshCurrentSheet() {
         }
       }
 
-      // Try to re-register events
-      try {
+      // Try to re-register events. Both are fail-soft — older hosts
+      // may not support them; carry on regardless.
+      await safeInit('Re-register events failed', async () => {
         await registerSelectionChangedEvent(context, activeSheet);
         await registerOnChangedEvent(context, activeSheet);
         await context.sync();
-      } catch (e) {
-        console.log('Re-register events failed:', e.message);
-      }
+      });
     });
 
     // Force update after Excel.run

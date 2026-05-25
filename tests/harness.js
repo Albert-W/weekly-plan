@@ -66,3 +66,7 @@ export const getInFlightChain = globalThis.getInFlightChain;
 // registry.js
 export const registerSheetHandlers = globalThis.registerSheetHandlers;
 export const getSheetHandlers = globalThis.getSheetHandlers;
+
+// ui.js (helpers)
+export const withStatus = globalThis.withStatus;
+export const safeInit = globalThis.safeInit;

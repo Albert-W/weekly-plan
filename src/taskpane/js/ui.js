@@ -266,3 +266,31 @@ async function withStatus(label, fn) {
 }
 
 window.withStatus = withStatus;
+
+/**
+ * Run an async function and SWALLOW failures, logging them.
+ *
+ * For optional / fail-soft work that should not abort the caller —
+ * the per-sheet inits in app.js#initializeAddin and the
+ * event-listener registrations are all "if this fails, just log and
+ * carry on" by design. safeInit removes the repeated
+ *
+ *   try { await thing; } catch (e) { console.log(label, e.message); }
+ *
+ * boilerplate. Returns the function's return value on success, or
+ * `null` on failure.
+ *
+ * @param {string} label - Short tag used in the console message on failure.
+ * @param {() => Promise<T>} fn - Async work to run.
+ * @returns {Promise<T | null>}
+ */
+async function safeInit(label, fn) {
+  try {
+    return await fn();
+  } catch (e) {
+    console.log(`${label}:`, e && e.message ? e.message : e);
+    return null;
+  }
+}
+
+window.safeInit = safeInit;
