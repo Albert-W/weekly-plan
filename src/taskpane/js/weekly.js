@@ -422,29 +422,50 @@ function _formatScore(n) {
  * when the Summary sheet doesn't exist (renders em-dashes) and when
  * the widget isn't in the DOM (no-op).
  */
+/**
+ * Refresh the Today's Score widget in the task pane. Safe to call
+ * when the Summary sheet doesn't exist (renders em-dashes) and when
+ * the widget isn't in the DOM (no-op).
+ *
+ * Single-flight guard: if a refresh is already in flight, return
+ * the existing promise instead of spawning an overlapping Excel.run
+ * (task #36). This makes the function safe to call fire-and-forget
+ * from the score-change handler AND from the 60s ticker without
+ * worrying about an earlier tick still being settled when a new
+ * one arrives.
+ */
+let _widgetRefreshInFlight = null;
 async function refreshTodayScoreWidget() {
-  const posEl = document.getElementById('ts-pos');
-  const negEl = document.getElementById('ts-neg');
-  const totalEl = document.getElementById('ts-total');
-  if (!posEl || !negEl || !totalEl) return;
+  if (_widgetRefreshInFlight) return _widgetRefreshInFlight;
+  _widgetRefreshInFlight = (async () => {
+    const posEl = document.getElementById('ts-pos');
+    const negEl = document.getElementById('ts-neg');
+    const totalEl = document.getElementById('ts-total');
+    if (!posEl || !negEl || !totalEl) return;
 
-  try {
-    let score = null;
-    await Excel.run(async (ctx) => {
-      score = await getTodayScore(ctx);
-    });
+    try {
+      let score = null;
+      await Excel.run(async (ctx) => {
+        score = await getTodayScore(ctx);
+      });
 
-    if (!score) {
-      posEl.textContent = '—';
-      negEl.textContent = '—';
-      totalEl.textContent = '—';
-      return;
+      if (!score) {
+        posEl.textContent = '—';
+        negEl.textContent = '—';
+        totalEl.textContent = '—';
+        return;
+      }
+      posEl.textContent = _formatScore(score.positive);
+      negEl.textContent = _formatScore(score.negative);
+      totalEl.textContent = _formatScore(score.total);
+    } catch (e) {
+      console.error('refreshTodayScoreWidget error:', e);
     }
-    posEl.textContent = _formatScore(score.positive);
-    negEl.textContent = _formatScore(score.negative);
-    totalEl.textContent = _formatScore(score.total);
-  } catch (e) {
-    console.error('refreshTodayScoreWidget error:', e);
+  })();
+  try {
+    return await _widgetRefreshInFlight;
+  } finally {
+    _widgetRefreshInFlight = null;
   }
 }
 

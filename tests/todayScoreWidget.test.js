@@ -115,4 +115,25 @@ describe('refreshTodayScoreWidget', () => {
     // Should not throw.
     await expect(refreshTodayScoreWidget()).resolves.toBeUndefined();
   });
+
+  it('single-flight: overlapping calls share one Excel.run (regression guard for task #36)', async () => {
+    const fake = setupSummary({ withTodayRow: true, positive: 1.5, negative: -0.3 });
+    fake.helpers.resetSyncCount();
+
+    // Fire 5 calls without awaiting between them — simulates the
+    // 60s ticker firing while the previous tick + score-change
+    // refresh are still settling. Without the single-flight guard
+    // each call would spawn its own Excel.run.
+    const promises = [];
+    for (let i = 0; i < 5; i++) promises.push(refreshTodayScoreWidget());
+    await Promise.all(promises);
+
+    // getTodayScore is 3 syncs (existence + date-col load + cell
+    // loads); 5 unguarded calls would be 15. With the guard, only
+    // the first call's run executes. (getTodayScore could itself be
+    // batched to 2 syncs in a follow-up, mirroring task #37.)
+    expect(fake.helpers.getSyncCount()).toBe(3);
+    // Final DOM state still correct.
+    expect(document.getElementById('ts-pos').textContent).toBe('1.5');
+  });
 });
