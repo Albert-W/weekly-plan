@@ -30,24 +30,16 @@ The code is a plain HTML + vanilla-JS task pane (no build step, no framework) sp
 - `app.js` — `Office.onReady` bootstrap and per-sheet initialization
 - `config.js` — All sheet names, row/column layout, colors, and scoring options
 - `state.js` — Lightweight global state (current sheet, last-init date, counters)
-- `weekly.js` / `habits.js` — Per-sheet business logic (scoring, archive, streaks)
-- `events.js` — `onSelectionChanged` and `onChanged` handlers
-- `ui.js` / `utils.js` — Status messages, modal popups, date and column helpers
+- `weekly.js` / `habits.js` / `tasks.js` / `summary.js` — Per-sheet business logic (scoring, archive, streaks, summary aggregation)
+- `events.js` — `onSelectionChanged` and `onChanged` dispatchers
+- `registry.js` — Per-sheet handler registration (extension point)
+- `concurrency.js` — Per-sheet `serializeSheetWrite` write queue (RMW race guard)
+- `export.js` — CSV serialization, downloads, archive helpers
+- `ui.js` / `utils.js` — Status messages, modal popups, `withStatus` / `safeInit` helpers, date and column helpers
 
 Because there is no bundler, you can edit a JS file, hit refresh in Excel, and see changes instantly — see [Quick Start](#quick-start---local-development) below.
 
 It uses **Office Add-ins with Office.js**, whose `SelectionChanged` event is the closest equivalent to VBA's `Worksheet_SelectionChange` and is what made this migration possible.
-
-## Why Excel Add-ins?
-
-| Feature | VBA | Google Sheets | Excel Add-in |
-|---------|-----|---------------|--------------|
-| Selection Change Event | ✅ | ❌ | ✅ |
-| Cell Change Event | ✅ | ✅ | ✅ |
-| Works Online | ❌ | ✅ | ✅ |
-| Works on Desktop | ✅ | ❌ | ✅ |
-| Works on Mobile | ❌ | ✅ | ✅ (limited) |
-| Language | VBA | JavaScript | JavaScript |
 
 ## Features
 
@@ -79,19 +71,26 @@ weekly-plan/
 ├── manifest-simple.xml     # Simplified manifest for local dev
 ├── manifest.xml            # Full manifest for production
 ├── README.md               # This file
+├── CHANGELOG.md            # Refactor + audit history
 ├── TUTORIAL.md             # Deployment guide
+├── tests/                  # Vitest + jsdom suite (28 files)
 └── src/
     └── taskpane/
         ├── taskpane.html   # Main HTML UI
-        └── js/
-            ├── config.js   # Configuration constants
-            ├── state.js    # Global state management
-            ├── utils.js    # Utility functions
-            ├── ui.js       # UI functions & modals
-            ├── habits.js   # Habits sheet logic
-            ├── weekly.js   # Weekly sheet logic
-            ├── events.js   # Event handlers
-            └── app.js      # Main initialization
+        └── js/             # 13 source files
+            ├── app.js          # Office.onReady bootstrap
+            ├── config.js       # CONFIG: sheets, layout, colors
+            ├── state.js        # Mutable runtime state
+            ├── utils.js        # Pure helpers (dates, columns)
+            ├── ui.js           # Status banner, modal, withStatus/safeInit
+            ├── registry.js     # Per-sheet handler registry
+            ├── concurrency.js  # serializeSheetWrite queue (RMW guard)
+            ├── events.js       # Selection/change/activate dispatchers
+            ├── weekly.js       # Weekly sheet logic
+            ├── habits.js       # Habits sheet logic
+            ├── tasks.js        # Tasks sheet logic
+            ├── summary.js      # Summary sheet read/write
+            └── export.js       # CSV serialization + downloads
 ```
 
 ## Configuration (config.js)
@@ -160,24 +159,32 @@ The `-a ::` flag makes the server bind to IPv6 (and accept IPv4 via dual-stack) 
 
 ## Running Tests
 
-The project ships with a Vitest-based test suite that protects the refactor backlog. Tests run in a jsdom environment against a small in-memory fake of the Office.js Excel object model — no Excel install required.
+The project ships with a Vitest-based test suite that protects every refactor wave. Tests run in a jsdom environment against a small in-memory fake of the Office.js Excel object model — no Excel install required.
 
 ```bash
 npm install        # one-time: installs vitest + jsdom
-npm test           # run the suite once
+npm test           # run the suite once (~5s)
 npm run test:watch # re-run on file changes
 ```
 
+Current suite: **157 tests across 28 files**, all deterministic regardless of wall-clock time (see CHANGELOG entry for `[M10] Use fake timers`).
+
 What's covered:
 
-- **Pure helpers** — date math, column math, CSV escaping, time formatting.
-- **buildWeeklyCSV** — header layout, time formatting, blank-row skipping, filename format.
-- **recordHabitDone** — streak counting, weighted-score formula, count increments, perf guard (≤3 syncs).
-- **processWeeklyScoreChange** — task lookup, weight application, `others` fallback, first-time `others` row creation, color rules, perf guard.
-- **clearForNewWeek** — clears scored rows only, preserves unscored task-only rows, resets background fill and totals row, perf guard (exactly 2 syncs).
-- **registerOnChangedEvent** — handler de-duplication (regression guard for the bug fixed in commit `5fbca1b`).
+- **Pure helpers** — date math, column math (incl. exhaustive 1- and 2-letter round-trip), CSV escaping with formula-injection guard, time formatting.
+- **buildWeeklyCSV** / **exportSheetAsCSV** — header layout, time formatting, blank-row skipping, formula-injection guard.
+- **recordHabitDone** / **processWeeklyScoreChange** — streak counting, weighted-score formula, count increments, exact `toBe(4)` sync-count perf guards.
+- **updateSummary** — row find / append, accumulation, missing-sheet no-op, exact `toBe(2)` sync-count perf guard.
+- **clearForNewWeek** — clears scored rows only, preserves unscored task-only rows, resets fill, exact `toBe(2)` sync-count perf guard.
+- **registerOnChangedEvent** — handler de-duplication regression guard.
+- **serializeSheetWrite** — per-sheet queue: same-sheet serialization, different-sheet parallelism, thrown task does not poison the chain.
+- **handleCellChanged race regression** — 5 overlapping handler calls preserve all 5 increments (would fail without the queue).
+- **refreshTodayScoreWidget single-flight** — 5 overlapping refresh calls share one `Excel.run`.
+- **showModal XSS defense** — `<img>` / `<script>` payloads render as literal text, no element created.
+- **safeInit** — success returns value, failure returns null and logs, never propagates.
+- **withStatus** — success path silent, failure path surfaces via `showStatus`.
 
-The plan that drove this is at `~/.llms/plans/weekly_plan_testing.plan.md`.
+Full refactor + audit history at `CHANGELOG.md`.
 
 ## Key Features Explained
 
@@ -208,8 +215,8 @@ At the start of a new week:
 3. New dates set automatically
 
 Or manually:
-- Click **📦 Archive** to export CSV
-- Click **🗓️ New Week** to clear and reset
+- Click **📦 Export All** to export CSVs of every sheet
+- Click **🗜️ New Week** to clear and reset
 
 ## Supported Sheets
 
@@ -249,14 +256,19 @@ Or manually:
 
 | File | Description |
 |------|-------------|
-| `config.js` | All configuration constants |
-| `state.js` | Global state (current sheet, counters) |
-| `utils.js` | Date formatting, column conversion |
-| `ui.js` | Status messages, modals, UI updates |
-| `habits.js` | Habits sheet logic |
-| `weekly.js` | Weekly sheet + archive + summary |
-| `events.js` | Selection/change event handlers |
-| `app.js` | Main initialization, Office.onReady |
+| `config.js` | All configuration constants (sheet names, layout, colors) |
+| `state.js` | Global state (current sheet, counters, last-init date) |
+| `utils.js` | Pure helpers: date formatting, column math (base-26) |
+| `ui.js` | Status banner, modal popups, `withStatus` and `safeInit` helpers |
+| `registry.js` | Per-sheet handler bundle registration |
+| `concurrency.js` | `serializeSheetWrite` per-sheet write queue (RMW race guard) |
+| `events.js` | Selection / change / activate dispatchers (route to registry) |
+| `weekly.js` | Weekly sheet: random pick, score handling, time-highlight ticker, today-score widget |
+| `habits.js` | Habits sheet: streak bonus, 14-day rolling window |
+| `tasks.js` | Tasks sheet: add/list, weighted random pick source |
+| `summary.js` | Summary sheet: 2-sync read/write of D/E/F + `getTodayScore` |
+| `export.js` | CSV serialization, download / clipboard fallback, archive |
+| `app.js` | Bootstrap (`Office.onReady`), per-sheet init via `safeInit` |
 
 ## Troubleshooting
 
