@@ -1,0 +1,6 @@
+# Push only the Apps Script project files; ignore everything else.
+**/**
+
+!appsscript.json
+!*.js
+!*.html

@@ -1,0 +1,456 @@
+/**
+ * Weekly/Timetable sheet logic (Google Sheets edition).
+ *
+ * Ported from src/taskpane/js/weekly.js. The async Excel.run/context.sync
+ * model becomes synchronous SpreadsheetApp calls. Score-cell colors are
+ * now handled by conditional formatting (see Setup.gs), so the score
+ * handler only colors the matching task cell. The 60s client ticker
+ * lives in the sidebar instead of here. currentDayIndex / lastMonday
+ * are recomputed each call (GAS is stateless).
+ */
+
+/**
+ * Initialize the Weekly sheet (run on open / new-day).
+ * Detects a new week (>= 7 days since the sheet's Monday) and rolls
+ * over, otherwise just refreshes highlights.
+ */
+function initializeWeeklyOnOpen() {
+  const sheet = getSheetByName_(CONFIG.WEEKLY_SHEET);
+  if (!sheet) return;
+  const W = CONFIG.WEEKLY;
+
+  const dateStr = String(sheet.getRange(W.DATE_CELL).getValue() || '');
+  const firstDay = parseInt(sheet.getRange(W.FIRST_DAY_HEADER_CELL).getValue(), 10) || 0;
+
+  let sheetLastMonday = null;
+  if (dateStr) {
+    const parts = dateStr.split(' ');
+    if (parts.length >= 2) {
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1;
+      sheetLastMonday = new Date(year, month, firstDay);
+    }
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  if (sheetLastMonday) {
+    const diffDays = daysBetween(sheetLastMonday, today);
+    if (diffDays >= 7) {
+      toast_('New week detected — archiving and resetting…', 'Weekly Plan');
+      doWeekRollover_(true);
+      return;
+    }
+  } else {
+    setNewWeekDates(sheet);
+  }
+
+  highlightCurrentDay(sheet);
+  highlightCurrentTimeRow(sheet);
+}
+
+/**
+ * Write the current week's dates: B4 = "yyyy mm" and day numbers in the
+ * score-column headers (D4, F4, … P4).
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ */
+function setNewWeekDates(sheet) {
+  const W = CONFIG.WEEKLY;
+  const newMonday = getMonday(new Date());
+
+  const yearMonth =
+    newMonday.getFullYear() + ' ' + String(newMonday.getMonth() + 1).padStart(2, '0');
+  sheet.getRange(W.DATE_CELL).setValue(yearMonth);
+
+  for (let i = 0; i < W.DAYS_IN_WEEK; i++) {
+    const dayDate = new Date(newMonday);
+    dayDate.setDate(newMonday.getDate() + i);
+    const colLetter = getScoreColLetterForDay(i);
+    sheet.getRange(colLetter + W.HEADER_ROW).setValue(dayDate.getDate());
+  }
+}
+
+/**
+ * Clear the grid for a new week. Only clears task+score pairs for rows
+ * that actually had a score recorded; task-only rows are preserved
+ * (matches the original VBA / Office behavior).
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ */
+function clearForNewWeek(sheet) {
+  const W = CONFIG.WEEKLY;
+  const dataStart = W.DATA_START_ROW;
+  const dataEnd = W.SCORE_ROW - 1;
+  const firstCol = getTaskColForDay(0); // C (col 3)
+  const colSpan = getScoreColForDay(W.DAYS_IN_WEEK - 1) - firstCol + 1; // C..P = 14
+
+  // Clear any manual task-cell backgrounds and the totals row.
+  sheet
+    .getRange(dataStart, firstCol, W.SCORE_ROW - dataStart + 1, colSpan)
+    .setBackground(null);
+  sheet.getRange(W.SCORE_ROW, firstCol, 1, colSpan).clearContent();
+
+  const values = sheet
+    .getRange(dataStart, firstCol, dataEnd - dataStart + 1, colSpan)
+    .getValues();
+
+  for (let day = 0; day < W.DAYS_IN_WEEK; day++) {
+    const taskColOffset = day * 2;
+    const scoreColOffset = day * 2 + 1;
+    for (let i = 0; i < values.length; i++) {
+      const scoreVal = values[i][scoreColOffset];
+      if (scoreVal !== '' && scoreVal !== null) {
+        const row = dataStart + i;
+        sheet.getRange(row, firstCol + taskColOffset).clearContent();
+        sheet.getRange(row, firstCol + scoreColOffset).clearContent();
+      }
+    }
+  }
+}
+
+/**
+ * Highlight the current day's header cells (row 4).
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ */
+function highlightCurrentDay(sheet) {
+  const W = CONFIG.WEEKLY;
+  sheet.getRange(W.HEADER_ROW_RANGE).setBackground(null);
+
+  const dayIndex = getCurrentDayIndex();
+  const taskColLetter = getTaskColLetterForDay(dayIndex);
+  const scoreColLetter = getScoreColLetterForDay(dayIndex);
+  sheet.getRange(taskColLetter + W.HEADER_ROW).setBackground(CONFIG.COLORS.TODAY_HIGHLIGHT);
+  sheet.getRange(scoreColLetter + W.HEADER_ROW).setBackground(CONFIG.COLORS.TODAY_HIGHLIGHT);
+}
+
+/**
+ * Highlight the time row matching the current clock time.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ */
+function highlightCurrentTimeRow(sheet) {
+  const W = CONFIG.WEEKLY;
+  const slotCount = W.LAST_TIME_ROW - W.DATA_START_ROW + 1;
+
+  // Clear previous time-column highlight.
+  sheet.getRange(W.DATA_START_ROW, W.TIME_COLUMN, slotCount, 1).setBackground(null);
+
+  const now = new Date();
+  const currentTimeDecimal = now.getHours() + now.getMinutes() / 60;
+
+  const timeValues = sheet
+    .getRange(W.DATA_START_ROW, W.TIME_COLUMN, slotCount, 1)
+    .getValues();
+
+  let bestRowIndex = -1;
+  let bestTimeValue = -1;
+  for (let i = 0; i < timeValues.length; i++) {
+    const cellTime = timeValues[i][0];
+    if (cellTime === '' || cellTime === null || cellTime === undefined) continue;
+
+    let timeValue = null;
+    if (cellTime instanceof Date) {
+      timeValue = cellTime.getHours() + cellTime.getMinutes() / 60;
+    } else if (typeof cellTime === 'number') {
+      if (cellTime >= 0 && cellTime <= 1) timeValue = cellTime * 24;
+      else if (cellTime <= 24) timeValue = cellTime;
+      else continue;
+    } else if (typeof cellTime === 'string') {
+      const m = cellTime.match(/^(\d{1,2}):(\d{2})$/);
+      if (m) timeValue = parseInt(m[1], 10) + parseInt(m[2], 10) / 60;
+      else continue;
+    } else {
+      continue;
+    }
+
+    if (timeValue <= currentTimeDecimal + 0.1 && timeValue > bestTimeValue) {
+      bestTimeValue = timeValue;
+      bestRowIndex = i;
+    }
+  }
+
+  if (bestRowIndex < 0) return;
+  const row = W.DATA_START_ROW + bestRowIndex;
+  sheet.getRange(row, W.TIME_COLUMN).setBackground(CONFIG.COLORS.CURRENT_TIME);
+
+  // If the current day's slot has no score yet, highlight task+score too.
+  const dayIndex = getCurrentDayIndex();
+  const taskCol = getTaskColForDay(dayIndex);
+  const scoreCol = getScoreColForDay(dayIndex);
+  const scoreVal = sheet.getRange(row, scoreCol).getValue();
+  if (scoreVal === '' || scoreVal === null) {
+    sheet.getRange(row, taskCol).setBackground(CONFIG.COLORS.CURRENT_TIME);
+    sheet.getRange(row, scoreCol).setBackground(CONFIG.COLORS.CURRENT_TIME);
+  }
+}
+
+/**
+ * Fill empty current-day task slots (that have a time) with random tasks.
+ * @returns {number} number of slots filled
+ */
+function randomPick() {
+  const weeklySheet = getSheetByName_(CONFIG.WEEKLY_SHEET);
+  const tasksSheet = getSheetByName_(CONFIG.TASKS_SHEET);
+  if (!weeklySheet || !tasksSheet) {
+    toast_('Weekly or Tasks sheet not found.', 'Weekly Plan');
+    return 0;
+  }
+  const W = CONFIG.WEEKLY;
+
+  const lastTaskRow = getLastTaskRow_();
+  const tasks = [];
+  if (lastTaskRow >= CONFIG.TASKS.DATA_START_ROW) {
+    const taskVals = tasksSheet
+      .getRange(CONFIG.TASKS.DATA_START_ROW, 1, lastTaskRow - CONFIG.TASKS.DATA_START_ROW + 1, 1)
+      .getValues();
+    for (let i = 0; i < taskVals.length; i++) {
+      if (taskVals[i][0] && taskVals[i][0] !== '') tasks.push(taskVals[i][0]);
+    }
+  }
+  if (tasks.length === 0) {
+    toast_('No tasks available for random pick.', 'Weekly Plan');
+    return 0;
+  }
+
+  const dayIndex = getCurrentDayIndex();
+  const taskCol = getTaskColForDay(dayIndex);
+  const slotCount = W.LAST_TIME_ROW - W.DATA_START_ROW + 1;
+  const timeVals = weeklySheet.getRange(W.DATA_START_ROW, W.TIME_COLUMN, slotCount, 1).getValues();
+  const taskVals = weeklySheet.getRange(W.DATA_START_ROW, taskCol, slotCount, 1).getValues();
+
+  let filled = 0;
+  for (let i = 0; i < slotCount; i++) {
+    const hasTime = timeVals[i][0] !== '' && timeVals[i][0] !== null;
+    const hasTask = taskVals[i][0] !== '' && taskVals[i][0] !== null;
+    if (hasTime && !hasTask) {
+      const randomTask = tasks[Math.floor(Math.random() * tasks.length)];
+      weeklySheet.getRange(W.DATA_START_ROW + i, taskCol).setValue(randomTask);
+      filled++;
+    }
+  }
+
+  toast_(
+    filled > 0 ? 'Filled ' + filled + ' slot(s) with random tasks.' : 'No empty slots to fill.',
+    'Weekly Plan'
+  );
+  return filled;
+}
+
+/**
+ * Process a score entered in a Weekly score cell. Updates the task-cell
+ * color, the daily total, the Tasks stats, and the Summary sheet.
+ * @param {number} row 1-based row
+ * @param {number} col 1-based score-column index
+ * @param {number} newScore
+ */
+function processWeeklyScoreChange(row, col, newScore) {
+  const weeklySheet = getSheetByName_(CONFIG.WEEKLY_SHEET);
+  const tasksSheet = getSheetByName_(CONFIG.TASKS_SHEET);
+  if (!weeklySheet || !tasksSheet) return;
+
+  const W = CONFIG.WEEKLY;
+  const taskCol = col - 1; // 1-based task column (score col - 1)
+  const lastTaskRow = getLastTaskRow_();
+
+  const lock = LockService.getDocumentLock();
+  let weightedScore = 0;
+  let newDailyTotal = 0;
+  let taskName = '';
+  try {
+    lock.waitLock(10000);
+  } catch (e) {
+    Logger.log('processWeeklyScoreChange: lock failed: ' + e.message);
+    return;
+  }
+
+  try {
+    taskName = weeklySheet.getRange(row, taskCol).getValue();
+    if (!taskName) return;
+
+    const dailyTotalCell = weeklySheet.getRange(W.SCORE_ROW, col);
+    const currentDailyTotal = parseFloat(dailyTotalCell.getValue()) || 0;
+
+    // Resolve the task in the Tasks sheet (name, weight, count, score).
+    const startRow = CONFIG.TASKS.DATA_START_ROW;
+    let names = [];
+    let weights = [];
+    let counts = [];
+    let scores = [];
+    if (lastTaskRow >= startRow) {
+      names = tasksSheet.getRange('A' + startRow + ':A' + lastTaskRow).getValues();
+      weights = tasksSheet.getRange('B' + startRow + ':B' + lastTaskRow).getValues();
+      counts = tasksSheet.getRange('F' + startRow + ':F' + lastTaskRow).getValues();
+      scores = tasksSheet.getRange('G' + startRow + ':G' + lastTaskRow).getValues();
+    }
+
+    let taskRow = -1;
+    let othersRow = -1;
+    for (let i = 0; i < names.length; i++) {
+      const name = names[i][0];
+      if (name === taskName) {
+        taskRow = i + startRow;
+        break;
+      }
+      if (name === CONFIG.TASKS.FALLBACK_NAME) othersRow = i + startRow;
+    }
+
+    let isNewTask = false;
+    let lookupIndex;
+    if (taskRow !== -1) {
+      lookupIndex = taskRow - startRow;
+    } else if (othersRow !== -1) {
+      taskRow = othersRow;
+      lookupIndex = othersRow - startRow;
+    } else {
+      taskRow = lastTaskRow + 1;
+      lookupIndex = -1;
+      isNewTask = true;
+    }
+
+    const taskWeight = isNewTask ? 1 : parseFloat(weights[lookupIndex][0]) || 1;
+    const currentCount = isNewTask ? 0 : parseInt(counts[lookupIndex][0], 10) || 0;
+    const currentTaskScore = isNewTask ? 0 : parseFloat(scores[lookupIndex][0]) || 0;
+
+    weightedScore = taskWeight * newScore;
+    newDailyTotal = currentDailyTotal + weightedScore;
+
+    const color =
+      weightedScore > 0
+        ? CONFIG.COLORS.POSITIVE
+        : weightedScore < 0
+        ? CONFIG.COLORS.NEGATIVE
+        : CONFIG.COLORS.NEUTRAL;
+    const now = formatDateTime(new Date());
+
+    // Color the task cell to match (score cell is colored by conditional formatting).
+    weeklySheet.getRange(row, taskCol).setBackground(color);
+    // Normalize the score cell to a real number so the numeric
+    // conditional-format rules apply (dropdown picks can land as text).
+    weeklySheet.getRange(row, col).setValue(newScore);
+    dailyTotalCell.setValue(newDailyTotal);
+
+    if (isNewTask) {
+      tasksSheet.getRange('A' + taskRow).setValue(CONFIG.TASKS.FALLBACK_NAME);
+      tasksSheet.getRange('B' + taskRow).setValue(1);
+      tasksSheet.getRange('C' + taskRow).setValue(now);
+      tasksSheet.getRange('D' + taskRow).setValue(now);
+      tasksSheet.getRange('F' + taskRow).setValue(1);
+      tasksSheet.getRange('G' + taskRow).setValue(weightedScore);
+    } else {
+      tasksSheet.getRange('D' + taskRow).setValue(now);
+      tasksSheet.getRange('F' + taskRow).setValue(currentCount + 1);
+      tasksSheet.getRange('G' + taskRow).setValue(currentTaskScore + weightedScore);
+    }
+    SpreadsheetApp.flush();
+  } finally {
+    lock.releaseLock();
+  }
+
+  // Summary update owns its own lock — call after releasing ours.
+  updateSummary(weightedScore > 0 ? weightedScore : 0, weightedScore < 0 ? weightedScore : 0);
+
+  toast_(
+    '"' + taskName + '" scored ' + weightedScore.toFixed(2) + ' (daily ' + newDailyTotal.toFixed(2) + ')',
+    'Weekly Plan'
+  );
+}
+
+/**
+ * Core week rollover: optionally archive, clear, set new dates, highlight.
+ * @param {boolean} archive
+ * @returns {{url: string|null, rows: number}}
+ */
+function doWeekRollover_(archive) {
+  const sheet = getSheetByName_(CONFIG.WEEKLY_SHEET);
+  if (!sheet) return { url: null, rows: 0 };
+
+  let result = { url: null, rows: 0 };
+  if (archive) {
+    result = safeInit_('Archive week failed', function () {
+      return archiveWeek_();
+    }) || { url: null, rows: 0 };
+  }
+  clearForNewWeek(sheet);
+  setNewWeekDates(sheet);
+  highlightCurrentDay(sheet);
+  highlightCurrentTimeRow(sheet);
+  return result;
+}
+
+/**
+ * Re-derive the daily Scores row (row 38) and task-cell colors from the
+ * current grid, in one pass. Use after editing scores on the mobile app,
+ * where the live onEdit trigger doesn't fire.
+ *
+ * Deterministic & safe to re-run: daily totals and colors are fully
+ * derived from the grid. It intentionally does NOT touch the Summary
+ * sheet or Tasks cumulative stats (those aggregate across history and
+ * also include habit completions, so re-deriving them from the weekly
+ * grid alone would double-count / clobber habit data).
+ *
+ * @returns {string} status message
+ */
+function recalculateWeek() {
+  const weeklySheet = getSheetByName_(CONFIG.WEEKLY_SHEET);
+  if (!weeklySheet) {
+    toast_('Weekly sheet not found.', 'Weekly Plan');
+    return 'Weekly sheet not found.';
+  }
+  const W = CONFIG.WEEKLY;
+
+  // Build a task name -> weight lookup from the Tasks sheet.
+  const weightByName = {};
+  const tasksSheet = getSheetByName_(CONFIG.TASKS_SHEET);
+  if (tasksSheet) {
+    const lastTaskRow = getLastTaskRow_();
+    const start = CONFIG.TASKS.DATA_START_ROW;
+    if (lastTaskRow >= start) {
+      const names = tasksSheet.getRange(start, 1, lastTaskRow - start + 1, 1).getValues();
+      const wts = tasksSheet.getRange(start, 2, lastTaskRow - start + 1, 1).getValues();
+      for (let i = 0; i < names.length; i++) {
+        if (names[i][0]) weightByName[names[i][0]] = parseFloat(wts[i][0]) || 1;
+      }
+    }
+  }
+
+  const firstCol = getTaskColForDay(0); // C
+  const colSpan = getScoreColForDay(W.DAYS_IN_WEEK - 1) - firstCol + 1; // C..P = 14
+  const dataRows = W.LAST_TIME_ROW - W.DATA_START_ROW + 1;
+  const range = weeklySheet.getRange(W.DATA_START_ROW, firstCol, dataRows, colSpan);
+  const values = range.getValues();
+  const backgrounds = range.getBackgrounds();
+
+  const dailyTotals = new Array(W.DAYS_IN_WEEK).fill(0);
+
+  for (let day = 0; day < W.DAYS_IN_WEEK; day++) {
+    const taskOff = day * 2;
+    const scoreOff = day * 2 + 1;
+    for (let i = 0; i < values.length; i++) {
+      const rawScore = values[i][scoreOff];
+      if (rawScore === '' || rawScore === null) {
+        backgrounds[i][taskOff] = CONFIG.COLORS.CLEAR; // drop stale color
+        continue;
+      }
+      const score = parseFloat(rawScore);
+      if (isNaN(score)) continue;
+      const taskName = values[i][taskOff];
+      const weight =
+        taskName && weightByName[taskName] !== undefined ? weightByName[taskName] : 1;
+      const weighted = weight * score;
+      dailyTotals[day] += weighted;
+      backgrounds[i][taskOff] =
+        weighted > 0
+          ? CONFIG.COLORS.POSITIVE
+          : weighted < 0
+          ? CONFIG.COLORS.NEGATIVE
+          : CONFIG.COLORS.NEUTRAL;
+    }
+  }
+
+  range.setBackgrounds(backgrounds);
+  for (let day = 0; day < W.DAYS_IN_WEEK; day++) {
+    weeklySheet.getRange(W.SCORE_ROW, getScoreColForDay(day)).setValue(dailyTotals[day]);
+  }
+
+  toast_('Recalculated daily scores from the grid.', 'Weekly Plan');
+  return 'Recalculated daily scores from the grid.';
+}

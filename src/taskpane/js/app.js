@@ -58,6 +58,10 @@ const BUTTON_ACTIONS = {
 };
 
 function bootstrapDom() {
+  // Show which manifest source the task pane was loaded from
+  // (localhost = simple/dev manifest, github.io = default/prod manifest).
+  updateManifestBadge();
+
   // Date icon — was an inline <script> in taskpane.html.
   const dateNum = document.getElementById('date-num');
   if (dateNum) dateNum.textContent = new Date().getDate();
@@ -264,9 +268,66 @@ async function randomPickFromUI() {
 }
 
 // ============================================================================
+// MANIFEST SOURCE DETECTION
+// ============================================================================
+
+/**
+ * Detect which manifest is in use by inspecting where the task pane was
+ * loaded from. This helps the user know whether their edits to local
+ * files will take effect (localhost) or whether they're running the
+ * deployed GitHub Pages build (default manifest).
+ *
+ * - localhost / 127.0.0.1 → simple/dev manifest
+ * - *.github.io           → default/prod manifest
+ * - anything else         → unknown (still shows the host so it's visible)
+ */
+function detectManifestSource() {
+  const host = (window.location && window.location.hostname) || '';
+  const origin = (window.location && window.location.origin) || '';
+
+  if (host === 'localhost' || host === '127.0.0.1' || host.endsWith('.local')) {
+    return {
+      kind: 'local',
+      label: 'LOCAL (simple manifest)',
+      tooltip: 'Loaded from ' + origin + ' — manifest-simple.xml. Your local edits to taskpane.html / js/* take effect here.',
+    };
+  }
+  if (host.endsWith('github.io')) {
+    return {
+      kind: 'github',
+      label: 'GITHUB (default manifest)',
+      tooltip: 'Loaded from ' + origin + ' — manifest.xml. Only changes pushed to GitHub Pages will appear here.',
+    };
+  }
+  return {
+    kind: 'unknown',
+    label: host ? ('OTHER (' + host + ')') : 'Unknown source',
+    tooltip: 'Loaded from ' + (origin || 'unknown location'),
+  };
+}
+
+/**
+ * Render the manifest-source badge in the header.
+ * Safe to call before/after Office is ready.
+ */
+function updateManifestBadge() {
+  const badge = document.getElementById('manifest-badge');
+  const labelEl = document.getElementById('manifest-badge-label');
+  if (!badge || !labelEl) return;
+
+  const info = detectManifestSource();
+  badge.classList.remove('local', 'github', 'unknown');
+  badge.classList.add(info.kind);
+  badge.setAttribute('title', info.tooltip);
+  labelEl.textContent = info.label;
+}
+
+// ============================================================================
 // EXPOSE FUNCTIONS TO GLOBAL SCOPE
 // ============================================================================
 
 window.initializeAddin = initializeAddin;
 window.refreshCurrentSheet = refreshCurrentSheet;
 window.randomPickFromUI = randomPickFromUI;
+window.detectManifestSource = detectManifestSource;
+window.updateManifestBadge = updateManifestBadge;

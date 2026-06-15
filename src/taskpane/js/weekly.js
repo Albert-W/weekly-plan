@@ -454,7 +454,7 @@ async function refreshTodayScoreWidget() {
   }
 }
 
-/**
+/*
  * Start the background ticker. Idempotent — safe to call multiple
  * times. Aligns to the next minute boundary so the highlight flips
  * shortly after the clock minute changes, then runs every 60s.

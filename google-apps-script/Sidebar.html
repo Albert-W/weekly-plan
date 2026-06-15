@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <base target="_top" />
+  <title>Weekly Plan</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { height: 100%; width: 100%; margin: 0; padding: 0; overflow-x: hidden; }
+    body {
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      overflow-y: auto;
+    }
+    .container { padding: 16px; width: 100%; margin: 0 auto; }
+    h1 {
+      color: white; text-align: center; margin: 0 0 16px 0;
+      font-size: 20px; text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+    .calendar-icon {
+      display: inline-flex; flex-direction: column; align-items: center; justify-content: center;
+      width: 28px; height: 28px; background: white; border-radius: 4px;
+      font-size: 14px; font-weight: bold; color: #333;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2); position: relative;
+      vertical-align: middle; margin-right: 6px;
+    }
+    .calendar-icon::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0;
+      height: 8px; background: #e74c3c; border-radius: 4px 4px 0 0;
+    }
+    .calendar-icon .date-num { margin-top: 4px; line-height: 1; }
+    .sheet-name { font-weight: 600; opacity: 0.85; font-size: 15px; margin-left: 6px; }
+    .header-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .card { background: white; border-radius: 12px; padding: 14px; box-shadow: 0 4px 20px rgba(0,0,0,0.15); margin-bottom: 12px; }
+    .card h2 { margin: 0 0 10px 0; font-size: 15px; color: #333; border-bottom: 2px solid #667eea; padding-bottom: 6px; }
+    .status { padding: 8px 12px; border-radius: 8px; font-size: 12px; line-height: 1.3; background: #f5f5f5; color: #666; margin-bottom: 12px; }
+    .status.success { background: #e8f5e9; color: #2e7d32; }
+    .status.error { background: #ffebee; color: #c62828; }
+    .status.warning { background: #fff3e0; color: #e65100; }
+    .status.info { background: #e3f2fd; color: #1565c0; }
+    .today-score {
+      display: flex; justify-content: space-around; gap: 6px; padding: 10px 8px; margin-bottom: 12px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px; color: white;
+    }
+    .today-score .ts-cell { flex: 1; text-align: center; }
+    .today-score .ts-label { font-size: 10px; opacity: 0.85; letter-spacing: 0.5px; text-transform: uppercase; }
+    .today-score .ts-value { font-size: 18px; font-weight: 700; line-height: 1.1; }
+    .today-score .ts-total .ts-value { font-size: 22px; }
+    .today-score .ts-pos .ts-value { color: #c8f0c8; }
+    .today-score .ts-neg .ts-value { color: #ffcaca; }
+    .btn-group { display: flex; flex-direction: column; gap: 8px; }
+    .btn-row { display: flex; gap: 8px; }
+    .btn-row .btn { flex: 1; }
+    .btn {
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      padding: 10px 14px; border: none; border-radius: 8px; cursor: pointer;
+      font-size: 13px; font-weight: 600; transition: all 0.2s ease;
+    }
+    .btn-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+    .btn-secondary { background: #f0f0f0; color: #333; }
+    .btn-success { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white; }
+    .btn-warning { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; }
+    .btn:disabled { opacity: 0.6; cursor: default; }
+    .collapsible { display: none; margin-top: 10px; padding: 12px; background: #f9f9f9; border-radius: 8px; }
+    .help-item { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 10px; }
+    .help-icon { font-size: 18px; min-width: 24px; }
+    .help-text { font-size: 12px; color: #555; line-height: 1.4; }
+    .help-text strong { color: #333; }
+    .streak-box { background: #fff3e0; border-left: 4px solid #ff9800; padding: 10px; border-radius: 0 8px 8px 0; margin-top: 10px; }
+    .streak-box h3 { margin: 0 0 6px 0; font-size: 13px; color: #e65100; }
+    .formula { font-family: 'Courier New', monospace; background: #f5f5f5; padding: 4px 8px; border-radius: 4px; font-size: 11px; display: inline-block; }
+    .form-group { margin-bottom: 12px; }
+    .form-group label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px; color: #333; }
+    .form-group input { width: 100%; padding: 8px 10px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 13px; }
+    .form-group input:focus { outline: none; border-color: #667eea; }
+    .footer { text-align: center; color: rgba(255,255,255,0.7); font-size: 10px; margin-top: 8px; }
+    .footer a { color: #d7f7e2; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header-row">
+      <h1 style="flex: 1; margin: 0;">
+        <span class="calendar-icon"><span class="date-num" id="date-num"></span></span>
+        Weekly Plan<span class="sheet-name" id="current-sheet-suffix"></span>
+      </h1>
+      <button class="btn btn-success" data-action="refresh" title="Refresh / re-init" style="padding:6px 10px;">🔄</button>
+    </div>
+
+    <div id="status" class="status" role="status" aria-live="polite">Initializing…</div>
+
+    <!-- ==================== SETUP ==================== -->
+    <div class="card">
+      <h2>⚙️ Setup</h2>
+      <div class="btn-group">
+        <button class="btn btn-primary" data-action="setup-sheets">🏗️ Set up sheets</button>
+        <button class="btn btn-secondary" data-action="install-triggers">🔁 Install triggers (run once)</button>
+      </div>
+      <p style="font-size: 11px; color: #888; margin: 10px 0 0 0;">
+        First time? Click <strong>Set up sheets</strong>, then <strong>Install triggers</strong> and authorize.
+      </p>
+    </div>
+
+    <!-- ==================== HABITS ==================== -->
+    <div id="habits-actions" class="card">
+      <h2>🎯 Habits Tracker</h2>
+      <div class="btn-group">
+        <div class="btn-row">
+          <button class="btn btn-primary" data-action="sort-habits">📊 Sort</button>
+          <button class="btn btn-secondary" data-action="refresh-habit-dates">📅 Dates</button>
+        </div>
+        <button class="btn btn-secondary" data-toggle="habits-help">❓ Help</button>
+      </div>
+      <div id="habits-help" class="collapsible">
+        <div class="help-item">
+          <span class="help-icon">✅</span>
+          <div class="help-text"><strong>Mark Habit Done:</strong><br>Tick the checkbox in <strong>column B</strong> next to the habit.</div>
+        </div>
+        <div class="help-item">
+          <span class="help-icon">📅</span>
+          <div class="help-text"><strong>14-Day Window:</strong><br>Auto-refreshes, or click "Dates".</div>
+        </div>
+        <div class="streak-box">
+          <h3>🔥 Streak Bonus</h3>
+          <div class="formula">Score = Base × 1.1<sup>streak</sup></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== WEEKLY ==================== -->
+    <div id="weekly-actions" class="card">
+      <h2>📅 Weekly Timetable</h2>
+      <div id="today-score" class="today-score" role="group" aria-label="Today's score" aria-live="polite">
+        <div class="ts-cell ts-pos"><div class="ts-label">+ Positive</div><div class="ts-value" id="ts-pos">—</div></div>
+        <div class="ts-cell ts-total"><div class="ts-label">Today</div><div class="ts-value" id="ts-total">—</div></div>
+        <div class="ts-cell ts-neg"><div class="ts-label">− Negative</div><div class="ts-value" id="ts-neg">—</div></div>
+      </div>
+      <div class="btn-group">
+        <button class="btn btn-primary" data-action="random-pick">🎲 Random Pick</button>
+        <button class="btn btn-secondary" data-action="recalculate">🧮 Recalculate Now</button>
+        <button class="btn btn-secondary" data-toggle="add-task-section">➕ Add Task</button>
+        <div class="btn-row">
+          <button class="btn btn-warning" data-action="export-all">📦 Export All</button>
+          <button class="btn btn-success" data-action="start-new-week">🗓️ New Week</button>
+        </div>
+        <button class="btn btn-secondary" data-action="export-summary">📊 Export Summary</button>
+        <button class="btn btn-secondary" data-toggle="weekly-help">❓ Help</button>
+      </div>
+
+      <div id="weekly-help" class="collapsible">
+        <div class="help-item"><span class="help-icon">📝</span><div class="help-text"><strong>Select Task:</strong><br>Type/pick a task in a task column (C, E, G…).</div></div>
+        <div class="help-item"><span class="help-icon">⭐</span><div class="help-text"><strong>Enter Score:</strong><br>Pick a score (0–1) from the dropdown in the score column (D, F, H…).</div></div>
+        <div class="help-item"><span class="help-icon">🎲</span><div class="help-text"><strong>Random Pick:</strong><br>Fills empty slots with random tasks.</div></div>
+        <div class="help-item"><span class="help-icon">🎨</span><div class="help-text"><strong>Colors:</strong><br>🟢 Positive | 🔴 Negative | 🟡 Neutral</div></div>
+      </div>
+
+      <div id="add-task-section" class="collapsible">
+        <h3 style="margin: 0 0 10px 0; font-size: 14px;">➕ Add New Task</h3>
+        <div class="form-group">
+          <label>Task Name</label>
+          <input type="text" id="new-task-name" placeholder="e.g., Deep Work" />
+        </div>
+        <div class="form-group">
+          <label>Weight (Score Multiplier)</label>
+          <input type="number" id="new-task-weight" value="1" min="0.1" step="0.1" />
+        </div>
+        <button class="btn btn-success" data-action="add-task" style="width: 100%;">Add Task</button>
+        <p style="font-size: 11px; color: #888; margin: 10px 0 0 0;">
+          To <strong>delete</strong> a task, delete its row directly on the Tasks sheet.
+        </p>
+      </div>
+    </div>
+
+    <div class="footer" id="footer-note">Google Sheets edition</div>
+  </div>
+
+  <script>
+    // --------------------------------------------------------------
+    // Status + helpers
+    // --------------------------------------------------------------
+    function showStatus(message, type) {
+      var el = document.getElementById('status');
+      el.textContent = message;
+      el.className = 'status ' + (type || '');
+    }
+
+    function onErr(label) {
+      return function (err) {
+        showStatus(label + ' failed: ' + (err && err.message ? err.message : err), 'error');
+      };
+    }
+
+    function toggleSection(id) {
+      var el = document.getElementById(id);
+      if (el) el.style.display = el.style.display === 'block' ? 'none' : 'block';
+    }
+
+    function formatScore(n) {
+      if (typeof n !== 'number' || !isFinite(n)) return '0';
+      return (n.toFixed(2).replace(/\.?0+$/, '')) || '0';
+    }
+
+    // --------------------------------------------------------------
+    // Today's score widget
+    // --------------------------------------------------------------
+    function renderScore(score) {
+      var pos = document.getElementById('ts-pos');
+      var neg = document.getElementById('ts-neg');
+      var total = document.getElementById('ts-total');
+      if (!score) { pos.textContent = neg.textContent = total.textContent = '—'; return; }
+      pos.textContent = formatScore(score.positive);
+      neg.textContent = formatScore(score.negative);
+      total.textContent = formatScore(score.total);
+    }
+
+    function refreshScore() {
+      google.script.run.withSuccessHandler(renderScore).withFailureHandler(function () {}).getTodayScoreFromUI();
+    }
+
+    function refreshTimeHighlight() {
+      google.script.run.withFailureHandler(function () {}).refreshTimeHighlightFromUI();
+    }
+
+    // --------------------------------------------------------------
+    // Actions
+    // --------------------------------------------------------------
+    function doInitialize() {
+      showStatus('Initializing…', 'info');
+      google.script.run
+        .withSuccessHandler(function (res) {
+          var suffix = document.getElementById('current-sheet-suffix');
+          suffix.textContent = res && res.sheet ? ' · ' + res.sheet : '';
+          showStatus('Ready' + (res && res.sheet ? ' · ' + res.sheet : ''), 'success');
+          refreshScore();
+        })
+        .withFailureHandler(onErr('Initialize'))
+        .initialize();
+    }
+
+    var ACTIONS = {
+      'refresh': doInitialize,
+      'setup-sheets': function () {
+        showStatus('Setting up sheets…', 'info');
+        google.script.run.withSuccessHandler(function (m) { showStatus(m, 'success'); doInitialize(); }).withFailureHandler(onErr('Set up sheets')).setUpSheetsFromUI();
+      },
+      'install-triggers': function () {
+        showStatus('Installing triggers…', 'info');
+        google.script.run.withSuccessHandler(function (m) { showStatus(m, 'success'); }).withFailureHandler(onErr('Install triggers')).installTriggers();
+      },
+      'sort-habits': function () {
+        google.script.run.withSuccessHandler(function (m) { showStatus(m, 'success'); }).withFailureHandler(onErr('Sort habits')).sortHabitsFromUI();
+      },
+      'refresh-habit-dates': function () {
+        google.script.run.withSuccessHandler(function (m) { showStatus(m, 'success'); }).withFailureHandler(onErr('Refresh dates')).refreshHabitDatesFromUI();
+      },
+      'random-pick': function () {
+        google.script.run.withSuccessHandler(function (n) { showStatus('Filled ' + n + ' slot(s).', 'success'); }).withFailureHandler(onErr('Random pick')).randomPickFromUI();
+      },
+      'recalculate': function () {
+        showStatus('Recalculating…', 'info');
+        google.script.run.withSuccessHandler(function (m) { showStatus(m, 'success'); refreshScore(); }).withFailureHandler(onErr('Recalculate')).recalculateWeekFromUI();
+      },
+      'export-all': function () {
+        showStatus('Exporting all sheets to Drive…', 'info');
+        google.script.run.withSuccessHandler(function (r) { showStatus('Exported ' + r.count + ' sheet(s) to Drive.', 'success'); }).withFailureHandler(onErr('Export all')).exportAllFromUI();
+      },
+      'export-summary': function () {
+        showStatus('Exporting summary…', 'info');
+        google.script.run.withSuccessHandler(function () { showStatus('Summary exported to Drive.', 'success'); }).withFailureHandler(onErr('Export summary')).exportSummaryFromUI();
+      },
+      'start-new-week': function () {
+        showStatus('Starting new week…', 'info');
+        google.script.run.withSuccessHandler(function (m) { showStatus(m, 'success'); refreshScore(); }).withFailureHandler(onErr('New week')).startNewWeekFromUI();
+      },
+      'add-task': function () {
+        var nameEl = document.getElementById('new-task-name');
+        var weightEl = document.getElementById('new-task-weight');
+        var name = (nameEl.value || '').trim();
+        var weight = parseFloat(weightEl.value) || 1;
+        if (!name) { showStatus('Please enter a task name', 'warning'); return; }
+        google.script.run.withSuccessHandler(function (t) {
+          nameEl.value = '';
+          weightEl.value = '1';
+          showStatus('Task "' + t.name + '" added.', 'success');
+        }).withFailureHandler(onErr('Add task')).addTaskFromUI(name, weight);
+      }
+    };
+
+    // --------------------------------------------------------------
+    // Wiring
+    // --------------------------------------------------------------
+    function wire() {
+      document.getElementById('date-num').textContent = new Date().getDate();
+
+      var actionBtns = document.querySelectorAll('button[data-action]');
+      for (var i = 0; i < actionBtns.length; i++) {
+        (function (btn) {
+          var fn = ACTIONS[btn.getAttribute('data-action')];
+          if (fn) btn.addEventListener('click', fn);
+        })(actionBtns[i]);
+      }
+      var toggleBtns = document.querySelectorAll('button[data-toggle]');
+      for (var j = 0; j < toggleBtns.length; j++) {
+        (function (btn) {
+          btn.addEventListener('click', function () { toggleSection(btn.getAttribute('data-toggle')); });
+        })(toggleBtns[j]);
+      }
+
+      doInitialize();
+
+      // Client-side ticker (replaces the Office build's server ticker):
+      // refresh the time-row highlight + today's score every 60s.
+      setInterval(function () {
+        refreshTimeHighlight();
+        refreshScore();
+      }, 60000);
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', wire);
+    } else {
+      wire();
+    }
+  </script>
+</body>
+</html>

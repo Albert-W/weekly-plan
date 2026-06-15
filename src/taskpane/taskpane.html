@@ -340,6 +340,31 @@
       color: #667eea;
       font-weight: 600;
     }
+
+    /* Manifest source indicator — subtle text in the footer that
+       tells the user whether the task pane was loaded from the
+       local dev server (simple manifest) or GitHub Pages
+       (default manifest). Kept low-key on purpose. */
+    .manifest-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 0.3px;
+      cursor: help;
+      white-space: nowrap;
+      opacity: 0.85;
+    }
+    .manifest-badge .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+    .manifest-badge.local   { color: #ffd9a8; }
+    .manifest-badge.github  { color: #b8f0c8; }
+    .manifest-badge.unknown { color: rgba(255,255,255,0.7); }
   </style>
 </head>
 <body>
@@ -510,8 +535,10 @@
     </main>
 
     <div class="footer">
-      Weekly Plan • Excel Add-in<br>
-      Best on Excel Online • Desktop supported (CSV via clipboard)
+      <span id="manifest-badge" class="manifest-badge unknown" title="Detecting manifest source…">
+        <span class="dot"></span>
+        <span id="manifest-badge-label">Detecting source…</span>
+      </span>
     </div>
   </div>
 
