@@ -19,7 +19,16 @@ function getLastHabitRow_() {
 }
 
 /**
+ * DocumentProperties key holding the YYYYMMDD date on which the habit
+ * "done" fills were last reset. Used so the green completion color clears
+ * exactly once per new day, not on every sidebar open.
+ */
+var HABITS_COLOR_RESET_PROP_ = 'habitsColorResetDate';
+
+/**
  * Initialize the Habits sheet (find today's column, highlight it).
+ * On the first run of a new day, also clears yesterday's green "done"
+ * fills so every habit looks fresh and can be built again.
  */
 function initializeHabitsSheet() {
   const sheet = getSheetByName_(CONFIG.HABITS_SHEET);
@@ -30,7 +39,45 @@ function initializeHabitsSheet() {
     refreshHabitsDatesCore_(sheet);
     dayIndex = findHabitsDayIndex(sheet);
   }
+
+  const props = PropertiesService.getDocumentProperties();
+  const today = formatDateYYYYMMDD(new Date());
+  if (props.getProperty(HABITS_COLOR_RESET_PROP_) !== today) {
+    clearHabitDoneColors_(sheet);
+    props.setProperty(HABITS_COLOR_RESET_PROP_, today);
+  }
+
   highlightCurrentDateHeader(sheet);
+}
+
+/**
+ * Clear the green "done" fill from the habit-name column (A) for every
+ * habit row, so a new day starts visually fresh.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ */
+function clearHabitDoneColors_(sheet) {
+  const H = CONFIG.HABITS;
+  const lastRow = getLastHabitRow_();
+  if (lastRow < H.DATA_START_ROW) return;
+  const nameCol = columnLetterToIndex(H.COLUMNS.HABIT_NAME) + 1; // A -> 1
+  sheet
+    .getRange(H.DATA_START_ROW, nameCol, lastRow - H.DATA_START_ROW + 1, 1)
+    .setBackground(CONFIG.COLORS.CLEAR);
+}
+
+/**
+ * Find the window column index (0-13) for a given date, or -1.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ * @param {Date} date
+ * @returns {number}
+ */
+function findHabitsDayIndexForDate_(sheet, date) {
+  const day = date.getDate();
+  const values = sheet.getRange(CONFIG.HABITS.HEADER_RANGE).getValues()[0];
+  for (let i = 0; i < values.length; i++) {
+    if (parseInt(values[i], 10) === day) return i;
+  }
+  return -1;
 }
 
 /**
@@ -39,12 +86,7 @@ function initializeHabitsSheet() {
  * @returns {number}
  */
 function findHabitsDayIndex(sheet) {
-  const todayDay = new Date().getDate();
-  const values = sheet.getRange(CONFIG.HABITS.HEADER_RANGE).getValues()[0];
-  for (let i = 0; i < values.length; i++) {
-    if (parseInt(values[i], 10) === todayDay) return i;
-  }
-  return -1;
+  return findHabitsDayIndexForDate_(sheet, new Date());
 }
 
 /**
@@ -164,6 +206,9 @@ function recordHabitDone(row) {
     }
 
     weightedScore = baseScore * Math.pow(H.STREAK_MULTIPLIER, streak);
+    const qHabitMult = questHabitMultiplier_(habitName); // Daily Quest bonus
+    weightedScore *= qHabitMult;
+    if (qHabitMult > 1) weightedScore *= comboMultiplierForToday_(); // streak combo
     const currentCount = parseInt(dayValues[dayIndex], 10) || 0;
     const currentTotal = parseInt(totalCell.getValue(), 10) || 0;
 
@@ -178,8 +223,22 @@ function recordHabitDone(row) {
 
   updateSummary(weightedScore, 0);
 
+  awardXp_(weightedScore);
+  maybeAwardStreakBadge_(streak + 1);
+  maybeAwardEarlyBird_(new Date());
+  checkBossDefeat_();
+
+  const isQuestHabit = questHabitMultiplier_(habitName) > 1;
+  let comboNote = '';
+  if (isQuestHabit) {
+    const comboDays = advanceComboForToday_();
+    markQuestDone_('habit', habitName);
+    if (comboDays > 1) comboNote = ' 🔥' + comboDays + 'd combo';
+  }
+
   const streakMsg = streak > 0 ? ' — ' + (streak + 1) + '-day streak!' : '';
-  toast_('"' + habitName + '" +' + weightedScore.toFixed(2) + ' pts' + streakMsg, 'Weekly Plan');
+  const questMsg = isQuestHabit ? ' ⭐ Quest bonus!' : '';
+  toast_('"' + habitName + '" +' + weightedScore.toFixed(2) + ' pts' + streakMsg + questMsg + comboNote, 'Weekly Plan');
 }
 
 /**

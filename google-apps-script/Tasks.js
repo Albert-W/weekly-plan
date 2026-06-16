@@ -68,3 +68,28 @@ function deleteTask(name) {
   }
   return false;
 }
+
+/**
+ * Sort task rows by weight (column B) descending.
+ * Mirrors sortHabits(): keeps each task's full row (A–G) together.
+ * @returns {string} status message
+ */
+function sortTasks() {
+  const sheet = getSheetByName_(CONFIG.TASKS_SHEET);
+  if (!sheet) {
+    toast_('Tasks sheet not found.', 'Weekly Plan');
+    return 'Tasks sheet not found.';
+  }
+  const start = CONFIG.TASKS.DATA_START_ROW;
+  const lastRow = getLastTaskRow_();
+  if (lastRow < start) return 'No tasks to sort.';
+
+  const weightCol = columnLetterToIndex('B') + 1; // B -> 2
+  const lastCol = columnLetterToIndex('G') + 1; // G -> 7 (Total Score)
+  sheet
+    .getRange(start, 1, lastRow - start + 1, lastCol)
+    .sort({ column: weightCol, ascending: false });
+
+  toast_('Tasks sorted by weight.', 'Weekly Plan');
+  return 'Tasks sorted by weight.';
+}

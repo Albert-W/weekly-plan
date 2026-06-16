@@ -39,6 +39,49 @@
     .status.error { background: #ffebee; color: #c62828; }
     .status.warning { background: #fff3e0; color: #e65100; }
     .status.info { background: #e3f2fd; color: #1565c0; }
+    /* Activity log panel */
+    .log-latest { padding: 10px 12px; border-radius: 8px; font-size: 13px; line-height: 1.35; background: #e3f2fd; color: #1565c0; word-break: break-word; }
+    .log-latest .log-head { font-weight: 700; }
+    .log-latest .log-time { display: block; font-size: 10px; font-weight: 400; opacity: 0.7; margin-top: 4px; }
+    .log-latest.log-success { background: #e8f5e9; color: #2e7d32; }
+    .log-latest.log-error { background: #ffebee; color: #c62828; }
+    .log-latest.log-warning { background: #fff3e0; color: #e65100; }
+    .log-latest.log-info { background: #e3f2fd; color: #1565c0; }
+    .log-history { margin-top: 8px; max-height: 150px; overflow-y: auto; }
+    .log-entry { display: flex; justify-content: space-between; gap: 8px; padding: 6px 4px; font-size: 11px; color: #555; border-top: 1px solid #eee; }
+    .log-entry .log-msg { flex: 1; word-break: break-word; }
+    .log-entry .log-time { color: #999; white-space: nowrap; font-size: 10px; }
+    .log-empty { font-size: 12px; color: #999; padding: 4px 0; }
+    /* Daily Quest panel */
+    .quest-card { background: linear-gradient(135deg, #fffbe6 0%, #fff3c4 100%); }
+    .quest-card h2 { border-bottom-color: #f0b429; }
+    .quest-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+    .quest-row .quest-icon { font-size: 20px; min-width: 26px; text-align: center; }
+    .quest-body { flex: 1; min-width: 0; }
+    .quest-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #a87900; font-weight: 700; }
+    .quest-name { font-size: 14px; color: #333; font-weight: 600; word-break: break-word; }
+    .quest-status { font-size: 16px; min-width: 22px; text-align: center; }
+    .quest-hint { font-size: 11px; color: #a87900; margin: 8px 0 0 0; text-align: center; }
+    .quest-combo { font-size: 12px; font-weight: 600; color: #d2691e; margin: 6px 0 0; text-align: center; }
+    .quest-combo.atrisk { color: #c62828; }
+    .quest-row.clickable { cursor: pointer; border-radius: 8px; padding: 6px; margin: 0 -6px; transition: background 0.15s ease; }
+    .quest-row.clickable:hover { background: rgba(240, 180, 41, 0.18); }
+    .quest-row.clickable:active { background: rgba(240, 180, 41, 0.32); }
+    /* XP / Levels panel */
+    .xp-card h2 { display: flex; align-items: center; gap: 6px; }
+    .xp-bar { height: 12px; background: #ececff; border-radius: 6px; overflow: hidden; margin: 4px 0 6px; }
+    .xp-bar-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #667eea 0%, #764ba2 100%); transition: width 0.3s ease; }
+    .xp-meta { font-size: 11px; color: #666; text-align: right; }
+    .xp-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+    .xp-badge { font-size: 18px; line-height: 1; padding: 4px; background: #f5f5ff; border-radius: 8px; cursor: default; }
+    .xp-badges-empty { font-size: 11px; color: #aaa; }
+    /* Weekly Boss panel */
+    .boss-card { background: linear-gradient(135deg, #fff0f3 0%, #ffe0e6 100%); }
+    .boss-card h2 { border-bottom-color: #e0457b; display: flex; align-items: center; gap: 6px; }
+    .boss-hp { height: 14px; background: #f3c9d4; border-radius: 7px; overflow: hidden; margin: 6px 0; }
+    .boss-hp-fill { height: 100%; width: 100%; background: linear-gradient(90deg, #f5576c 0%, #f093fb 100%); transition: width 0.3s ease; }
+    .boss-meta { font-size: 12px; color: #b3375f; font-weight: 600; text-align: center; }
+    .boss-defeated { color: #2e7d32; }
     .today-score {
       display: flex; justify-content: space-around; gap: 6px; padding: 10px 8px; margin-bottom: 12px;
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px; color: white;
@@ -85,21 +128,103 @@
         <span class="calendar-icon"><span class="date-num" id="date-num"></span></span>
         Weekly Plan<span class="sheet-name" id="current-sheet-suffix"></span>
       </h1>
-      <button class="btn btn-success" data-action="refresh" title="Refresh / re-init" style="padding:6px 10px;">🔄</button>
     </div>
 
     <div id="status" class="status" role="status" aria-live="polite">Initializing…</div>
 
-    <!-- ==================== SETUP ==================== -->
-    <div class="card">
-      <h2>⚙️ Setup</h2>
-      <div class="btn-group">
-        <button class="btn btn-primary" data-action="setup-sheets">🏗️ Set up sheets</button>
-        <button class="btn btn-secondary" data-action="install-triggers">🔁 Install triggers (run once)</button>
+    <!-- ==================== DAILY QUEST ==================== -->
+    <div id="daily-quest" class="card quest-card">
+      <h2>⭐ Today's Quest</h2>
+      <div class="quest-row clickable" id="quest-habit-row" role="button" tabindex="0" title="Click to mark this habit done for today">
+        <span class="quest-icon">🎯</span>
+        <div class="quest-body">
+          <div class="quest-label">Habit</div>
+          <div class="quest-name" id="quest-habit">—</div>
+        </div>
+        <span class="quest-status" id="quest-habit-status">⬜</span>
       </div>
-      <p style="font-size: 11px; color: #888; margin: 10px 0 0 0;">
-        First time? Click <strong>Set up sheets</strong>, then <strong>Install triggers</strong> and authorize.
-      </p>
+      <div class="quest-row clickable" id="quest-task-row" role="button" tabindex="0" title="Click to complete this task now (scores 1.0 in the current time slot)">
+        <span class="quest-icon">📋</span>
+        <div class="quest-body">
+          <div class="quest-label">Task</div>
+          <div class="quest-name" id="quest-task">—</div>
+        </div>
+        <span class="quest-status" id="quest-task-status">⬜</span>
+      </div>
+      <p class="quest-hint" id="quest-hint">Complete both for a bonus!</p>
+      <div class="quest-combo" id="quest-combo"></div>
+    </div>
+
+    <!-- ==================== XP / LEVEL ==================== -->
+    <div id="xp-card" class="card xp-card">
+      <h2>🏆 Level <span id="xp-level">1</span></h2>
+      <div class="xp-bar"><div class="xp-bar-fill" id="xp-bar-fill"></div></div>
+      <div class="xp-meta" id="xp-meta">0 / 0 XP</div>
+      <div class="xp-badges" id="xp-badges"><span class="xp-badges-empty">No badges yet — earn XP to unlock them!</span></div>
+    </div>
+
+    <!-- ==================== WEEKLY BOSS ==================== -->
+    <div id="boss-card" class="card boss-card">
+      <h2><span id="boss-emoji">🐉</span> Weekly Boss</h2>
+      <div class="boss-hp"><div class="boss-hp-fill" id="boss-hp-fill"></div></div>
+      <div class="boss-meta" id="boss-meta">—</div>
+    </div>
+
+    <!-- ==================== ACTIVITY LOG ==================== -->
+    <div id="activity-log" class="card">
+      <h2>📜 Activity Log</h2>
+      <div id="log-latest" class="log-latest log-info" aria-live="polite">No activity yet.</div>
+      <div id="log-history" class="log-history"></div>
+    </div>
+
+    <!-- ==================== WEEKLY (daily use) ==================== -->
+    <div id="weekly-actions" class="card">
+      <h2>📅 Weekly Timetable</h2>
+      <div id="today-score" class="today-score" role="group" aria-label="Today's score" aria-live="polite">
+        <div class="ts-cell ts-pos"><div class="ts-label">+ Positive</div><div class="ts-value" id="ts-pos">—</div></div>
+        <div class="ts-cell ts-total"><div class="ts-label">Today</div><div class="ts-value" id="ts-total">—</div></div>
+        <div class="ts-cell ts-neg"><div class="ts-label">− Negative</div><div class="ts-value" id="ts-neg">—</div></div>
+      </div>
+      <div class="btn-group">
+        <div class="btn-row">
+          <button class="btn btn-primary" data-action="random-pick">🎲 Random Pick</button>
+          <button class="btn btn-primary" data-action="sync-calendar">📆 Sync Calendar</button>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-secondary" data-toggle="add-task-section">➕ Add Task</button>
+          <button class="btn btn-primary" data-action="sort-tasks">📊 Sort Tasks</button>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-warning" data-action="export-all">📦 Export All</button>
+          <button class="btn btn-success" data-action="start-new-week">🗓️ New Week</button>
+        </div>
+        <button class="btn btn-secondary" data-toggle="weekly-help">❓ Help</button>
+      </div>
+
+      <div id="weekly-help" class="collapsible">
+        <div class="help-item"><span class="help-icon">📝</span><div class="help-text"><strong>Select Task:</strong><br>Type/pick a task in a task column (C, E, G…).</div></div>
+        <div class="help-item"><span class="help-icon">⭐</span><div class="help-text"><strong>Enter Score:</strong><br>Pick a score (0–1) from the dropdown in the score column (D, F, H…).</div></div>
+        <div class="help-item"><span class="help-icon">🎲</span><div class="help-text"><strong>Random Pick:</strong><br>Fills empty slots with random tasks.</div></div>
+        <div class="help-item"><span class="help-icon">📆</span><div class="help-text"><strong>Sync Calendar:</strong><br>Imports this week's Google Calendar events into the grid (overwrites matching slots).</div></div>
+        <div class="help-item"><span class="help-icon">📦</span><div class="help-text"><strong>Export All:</strong><br>Saves every sheet (incl. Summary) to Drive as CSV.</div></div>
+        <div class="help-item"><span class="help-icon">🎨</span><div class="help-text"><strong>Colors:</strong><br>🟢 Positive | 🔴 Negative | 🟡 Neutral</div></div>
+      </div>
+
+      <div id="add-task-section" class="collapsible">
+        <h3 style="margin: 0 0 10px 0; font-size: 14px;">➕ Add New Task</h3>
+        <div class="form-group">
+          <label>Task Name</label>
+          <input type="text" id="new-task-name" placeholder="e.g., Deep Work" />
+        </div>
+        <div class="form-group">
+          <label>Weight (Score Multiplier)</label>
+          <input type="number" id="new-task-weight" value="1" min="0.1" step="0.1" />
+        </div>
+        <button class="btn btn-success" data-action="add-task" style="width: 100%;">Add Task</button>
+        <p style="font-size: 11px; color: #888; margin: 10px 0 0 0;">
+          To <strong>delete</strong> a task, delete its row directly on the Tasks sheet.
+        </p>
+      </div>
     </div>
 
     <!-- ==================== HABITS ==================== -->
@@ -128,46 +253,15 @@
       </div>
     </div>
 
-    <!-- ==================== WEEKLY ==================== -->
-    <div id="weekly-actions" class="card">
-      <h2>📅 Weekly Timetable</h2>
-      <div id="today-score" class="today-score" role="group" aria-label="Today's score" aria-live="polite">
-        <div class="ts-cell ts-pos"><div class="ts-label">+ Positive</div><div class="ts-value" id="ts-pos">—</div></div>
-        <div class="ts-cell ts-total"><div class="ts-label">Today</div><div class="ts-value" id="ts-total">—</div></div>
-        <div class="ts-cell ts-neg"><div class="ts-label">− Negative</div><div class="ts-value" id="ts-neg">—</div></div>
-      </div>
-      <div class="btn-group">
-        <button class="btn btn-primary" data-action="random-pick">🎲 Random Pick</button>
-        <button class="btn btn-secondary" data-action="recalculate">🧮 Recalculate Now</button>
-        <button class="btn btn-secondary" data-toggle="add-task-section">➕ Add Task</button>
-        <div class="btn-row">
-          <button class="btn btn-warning" data-action="export-all">📦 Export All</button>
-          <button class="btn btn-success" data-action="start-new-week">🗓️ New Week</button>
-        </div>
-        <button class="btn btn-secondary" data-action="export-summary">📊 Export Summary</button>
-        <button class="btn btn-secondary" data-toggle="weekly-help">❓ Help</button>
-      </div>
-
-      <div id="weekly-help" class="collapsible">
-        <div class="help-item"><span class="help-icon">📝</span><div class="help-text"><strong>Select Task:</strong><br>Type/pick a task in a task column (C, E, G…).</div></div>
-        <div class="help-item"><span class="help-icon">⭐</span><div class="help-text"><strong>Enter Score:</strong><br>Pick a score (0–1) from the dropdown in the score column (D, F, H…).</div></div>
-        <div class="help-item"><span class="help-icon">🎲</span><div class="help-text"><strong>Random Pick:</strong><br>Fills empty slots with random tasks.</div></div>
-        <div class="help-item"><span class="help-icon">🎨</span><div class="help-text"><strong>Colors:</strong><br>🟢 Positive | 🔴 Negative | 🟡 Neutral</div></div>
-      </div>
-
-      <div id="add-task-section" class="collapsible">
-        <h3 style="margin: 0 0 10px 0; font-size: 14px;">➕ Add New Task</h3>
-        <div class="form-group">
-          <label>Task Name</label>
-          <input type="text" id="new-task-name" placeholder="e.g., Deep Work" />
-        </div>
-        <div class="form-group">
-          <label>Weight (Score Multiplier)</label>
-          <input type="number" id="new-task-weight" value="1" min="0.1" step="0.1" />
-        </div>
-        <button class="btn btn-success" data-action="add-task" style="width: 100%;">Add Task</button>
+    <!-- ==================== SETUP (first-time, collapsed) ==================== -->
+    <div class="card">
+      <h2>⚙️ Setup</h2>
+      <button class="btn btn-secondary" data-toggle="setup-section">🏗️ First-time setup</button>
+      <div id="setup-section" class="collapsible">
+        <button class="btn btn-primary" data-action="setup-sheets" style="width: 100%;">🏗️ Set up sheets</button>
         <p style="font-size: 11px; color: #888; margin: 10px 0 0 0;">
-          To <strong>delete</strong> a task, delete its row directly on the Tasks sheet.
+          First run: click <strong>Set up sheets</strong>, then open the <strong>Weekly Plan</strong> menu →
+          <strong>Install triggers (run once)</strong> and authorize.
         </p>
       </div>
     </div>
@@ -194,6 +288,63 @@
     function toggleSection(id) {
       var el = document.getElementById(id);
       if (el) el.style.display = el.style.display === 'block' ? 'none' : 'block';
+    }
+
+    // --------------------------------------------------------------
+    // Activity log panel
+    // --------------------------------------------------------------
+    function escapeHtml(s) {
+      return String(s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function pad2(n) { return (n < 10 ? '0' : '') + n; }
+
+    function fmtLogTime(ts) {
+      try {
+        var d = new Date(ts);
+        return pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds());
+      } catch (e) { return ''; }
+    }
+
+    function renderLog(entries) {
+      var latest = document.getElementById('log-latest');
+      var history = document.getElementById('log-history');
+      if (!entries || !entries.length) {
+        latest.className = 'log-latest log-info';
+        latest.textContent = 'No activity yet.';
+        history.innerHTML = '';
+        return;
+      }
+      var top = entries[0];
+      latest.className = 'log-latest log-' + (top.type || 'info');
+      latest.innerHTML =
+        '<span class="log-head">' + escapeHtml(top.title || 'Weekly Plan') + '</span> ' +
+        escapeHtml(top.msg) +
+        '<span class="log-time">' + fmtLogTime(top.ts) + '</span>';
+
+      var rest = entries.slice(1);
+      if (!rest.length) {
+        history.innerHTML = '<div class="log-empty">No earlier activity.</div>';
+        return;
+      }
+      var html = '';
+      for (var i = 0; i < rest.length; i++) {
+        html +=
+          '<div class="log-entry">' +
+            '<span class="log-msg">' + escapeHtml(rest[i].msg) + '</span>' +
+            '<span class="log-time">' + fmtLogTime(rest[i].ts) + '</span>' +
+          '</div>';
+      }
+      history.innerHTML = html;
+    }
+
+    function refreshLog() {
+      google.script.run
+        .withSuccessHandler(renderLog)
+        .withFailureHandler(function () {})
+        .getActivityLogFromUI();
     }
 
     function formatScore(n) {
@@ -223,6 +374,132 @@
     }
 
     // --------------------------------------------------------------
+    // Daily Quest panel
+    // --------------------------------------------------------------
+    function renderQuest(q) {
+      var hEl = document.getElementById('quest-habit');
+      var tEl = document.getElementById('quest-task');
+      var hs = document.getElementById('quest-habit-status');
+      var ts = document.getElementById('quest-task-status');
+      var hint = document.getElementById('quest-hint');
+      var combo = document.getElementById('quest-combo');
+      if (!q) { hEl.textContent = tEl.textContent = '—'; return; }
+      hEl.textContent = q.habit || '—';
+      tEl.textContent = q.task || '—';
+      hs.textContent = q.habitDone ? '✅' : '⬜';
+      ts.textContent = q.taskDone ? '✅' : '⬜';
+      if (hint) hint.textContent = 'Complete both for a ×' + (q.bonus || 1.5) + ' bonus!';
+      if (combo) {
+        var m = (q.comboMultiplier || 1).toFixed(1);
+        combo.className = 'quest-combo';
+        if (q.comboDoneToday) {
+          combo.textContent = '🔥 ' + q.comboDays + '-day combo locked in (×' + m + ')!';
+        } else if (q.comboAtRisk) {
+          combo.className = 'quest-combo atrisk';
+          combo.textContent = '🔥 ' + q.comboDays + '-day combo at risk — finish today for ×' + m + '!';
+        } else {
+          combo.textContent = '🔥 Start a streak — finish today for ×' + m + '!';
+        }
+      }
+    }
+
+    function refreshQuest() {
+      google.script.run.withSuccessHandler(renderQuest).withFailureHandler(function () {}).getDailyQuestFromUI();
+    }
+
+    // --------------------------------------------------------------
+    // XP / Level panel
+    // --------------------------------------------------------------
+    function renderXp(x) {
+      var lvl = document.getElementById('xp-level');
+      var fill = document.getElementById('xp-bar-fill');
+      var meta = document.getElementById('xp-meta');
+      var badges = document.getElementById('xp-badges');
+      if (!x) return;
+      lvl.textContent = x.level;
+      fill.style.width = Math.max(0, Math.min(100, x.progressPct)) + '%';
+      meta.textContent = formatScore(x.intoLevel) + ' / ' + formatScore(x.levelSpan) +
+        ' XP  ·  ' + formatScore(x.xp) + ' total';
+      if (!x.badges || !x.badges.length) {
+        badges.innerHTML = '<span class="xp-badges-empty">No badges yet — earn XP to unlock them!</span>';
+        return;
+      }
+      var html = '';
+      for (var i = 0; i < x.badges.length; i++) {
+        var b = x.badges[i];
+        html += '<span class="xp-badge" title="' + (b.label + ' — ' + b.desc) + '">' + b.emoji + '</span>';
+      }
+      badges.innerHTML = html;
+    }
+
+    function refreshXp() {
+      google.script.run.withSuccessHandler(renderXp).withFailureHandler(function () {}).getXpStateFromUI();
+    }
+
+    // --------------------------------------------------------------
+    // Weekly Boss panel
+    // --------------------------------------------------------------
+    function renderBoss(b) {
+      var card = document.getElementById('boss-card');
+      var emoji = document.getElementById('boss-emoji');
+      var fill = document.getElementById('boss-hp-fill');
+      var meta = document.getElementById('boss-meta');
+      if (!b) { if (card) card.style.display = 'none'; return; }
+      if (card) card.style.display = '';
+      emoji.textContent = b.emoji || '🐉';
+      meta.className = 'boss-meta';
+      if (b.defeated) {
+        fill.style.width = '0%';
+        meta.className = 'boss-meta boss-defeated';
+        meta.textContent = '✅ ' + b.name + ' defeated! (' + formatScore(b.progress) + '/' + b.target + ')';
+      } else {
+        fill.style.width = Math.max(0, 100 - b.pct) + '%';
+        var unit = b.type === 'quests' ? ' quest(s)' : ' pts';
+        meta.textContent = b.name + ' · ' + formatScore(b.remaining) + unit + ' to go (' +
+          formatScore(b.progress) + '/' + b.target + ')';
+      }
+    }
+
+    function refreshBoss() {
+      google.script.run.withSuccessHandler(renderBoss).withFailureHandler(function () {}).getBossStateFromUI();
+    }
+
+    function wireQuestClicks() {
+      function activate(el, fn) {
+        if (!el) return;
+        el.addEventListener('click', fn);
+        el.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter' || e.key === ' ' || e.keyCode === 13 || e.keyCode === 32) {
+            e.preventDefault();
+            fn();
+          }
+        });
+      }
+      activate(document.getElementById('quest-habit-row'), function () {
+        showStatus('Marking quest habit done…', 'info');
+        google.script.run.withSuccessHandler(function (m) {
+          showStatus(m, 'success');
+          refreshQuest();
+          refreshScore();
+          refreshXp();
+          setTimeout(refreshLog, 800);
+          setTimeout(refreshLog, 2000);
+        }).withFailureHandler(onErr('Quest habit')).completeQuestHabitFromUI();
+      });
+      activate(document.getElementById('quest-task-row'), function () {
+        showStatus('Completing quest task…', 'info');
+        google.script.run.withSuccessHandler(function (m) {
+          showStatus(m, 'success');
+          refreshQuest();
+          refreshScore();
+          refreshXp();
+          setTimeout(refreshLog, 800);
+          setTimeout(refreshLog, 2000);
+        }).withFailureHandler(onErr('Quest task')).scheduleQuestTaskFromUI();
+      });
+    }
+
+    // --------------------------------------------------------------
     // Actions
     // --------------------------------------------------------------
     function doInitialize() {
@@ -233,23 +510,24 @@
           suffix.textContent = res && res.sheet ? ' · ' + res.sheet : '';
           showStatus('Ready' + (res && res.sheet ? ' · ' + res.sheet : ''), 'success');
           refreshScore();
+          refreshQuest();
+          refreshXp();
+          refreshBoss();
         })
         .withFailureHandler(onErr('Initialize'))
         .initialize();
     }
 
     var ACTIONS = {
-      'refresh': doInitialize,
       'setup-sheets': function () {
         showStatus('Setting up sheets…', 'info');
         google.script.run.withSuccessHandler(function (m) { showStatus(m, 'success'); doInitialize(); }).withFailureHandler(onErr('Set up sheets')).setUpSheetsFromUI();
       },
-      'install-triggers': function () {
-        showStatus('Installing triggers…', 'info');
-        google.script.run.withSuccessHandler(function (m) { showStatus(m, 'success'); }).withFailureHandler(onErr('Install triggers')).installTriggers();
-      },
       'sort-habits': function () {
         google.script.run.withSuccessHandler(function (m) { showStatus(m, 'success'); }).withFailureHandler(onErr('Sort habits')).sortHabitsFromUI();
+      },
+      'sort-tasks': function () {
+        google.script.run.withSuccessHandler(function (m) { showStatus(m, 'success'); }).withFailureHandler(onErr('Sort tasks')).sortTasksFromUI();
       },
       'refresh-habit-dates': function () {
         google.script.run.withSuccessHandler(function (m) { showStatus(m, 'success'); }).withFailureHandler(onErr('Refresh dates')).refreshHabitDatesFromUI();
@@ -257,17 +535,13 @@
       'random-pick': function () {
         google.script.run.withSuccessHandler(function (n) { showStatus('Filled ' + n + ' slot(s).', 'success'); }).withFailureHandler(onErr('Random pick')).randomPickFromUI();
       },
-      'recalculate': function () {
-        showStatus('Recalculating…', 'info');
-        google.script.run.withSuccessHandler(function (m) { showStatus(m, 'success'); refreshScore(); }).withFailureHandler(onErr('Recalculate')).recalculateWeekFromUI();
+      'sync-calendar': function () {
+        showStatus('Syncing calendar…', 'info');
+        google.script.run.withSuccessHandler(function (m) { showStatus(m, 'success'); }).withFailureHandler(onErr('Sync calendar')).syncCalendarFromUI();
       },
       'export-all': function () {
         showStatus('Exporting all sheets to Drive…', 'info');
         google.script.run.withSuccessHandler(function (r) { showStatus('Exported ' + r.count + ' sheet(s) to Drive.', 'success'); }).withFailureHandler(onErr('Export all')).exportAllFromUI();
-      },
-      'export-summary': function () {
-        showStatus('Exporting summary…', 'info');
-        google.script.run.withSuccessHandler(function () { showStatus('Summary exported to Drive.', 'success'); }).withFailureHandler(onErr('Export summary')).exportSummaryFromUI();
       },
       'start-new-week': function () {
         showStatus('Starting new week…', 'info');
@@ -297,7 +571,15 @@
       for (var i = 0; i < actionBtns.length; i++) {
         (function (btn) {
           var fn = ACTIONS[btn.getAttribute('data-action')];
-          if (fn) btn.addEventListener('click', fn);
+          if (fn) {
+            btn.addEventListener('click', function () {
+              fn();
+              // The action toasts server-side; pull the log back promptly
+              // so the dedicated panel reflects it without waiting a cycle.
+              setTimeout(refreshLog, 800);
+              setTimeout(refreshLog, 2000);
+            });
+          }
         })(actionBtns[i]);
       }
       var toggleBtns = document.querySelectorAll('button[data-toggle]');
@@ -308,13 +590,26 @@
       }
 
       doInitialize();
+      refreshLog();
+      refreshQuest();
+      refreshXp();
+      refreshBoss();
+      wireQuestClicks();
 
-      // Client-side ticker (replaces the Office build's server ticker):
-      // refresh the time-row highlight + today's score every 60s.
+      // Apps Script has no server->client push, so changes from cell edits
+      // / triggers (score, XP, quest, log) can only reach the sidebar by
+      // polling. Poll these light reads together every 3s so grid edits
+      // show up near-instantly.
       setInterval(function () {
-        refreshTimeHighlight();
+        refreshLog();
         refreshScore();
-      }, 60000);
+        refreshQuest();
+        refreshXp();
+        refreshBoss();
+      }, 3000);
+
+      // The time-row highlight only needs minute granularity.
+      setInterval(refreshTimeHighlight, 60000);
     }
 
     if (document.readyState === 'loading') {

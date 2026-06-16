@@ -86,6 +86,92 @@ const CONFIG = {
     TOTAL_SCORE_COLUMN: 'F',
   },
 
+  // ==================== DAILY QUEST CONFIG ====================
+  QUEST: {
+    // Featured habit/task earn this multiplier on their points when
+    // completed/scored on their quest day (x1.5 => +50% bonus).
+    BONUS_MULTIPLIER: 1.5,
+    // DocumentProperties key holding the persisted daily quest JSON.
+    PROP_KEY: 'dailyQuest',
+  },
+
+  // ==================== QUEST STREAK COMBO CONFIG ====================
+  // Completing the daily quest (featured habit OR task done) on
+  // consecutive days builds a combo multiplier applied ON TOP of the
+  // quest bonus. Missing a day resets it. multiplier(n days) =
+  // BASE + min(n, CAP_DAYS) * STEP  =>  1d x1.2, 2d x1.4 ... 5d+ x2.0.
+  COMBO: {
+    BASE: 1.0,
+    STEP: 0.2,
+    CAP_DAYS: 5,
+    PROP_KEY: 'questCombo', // JSON { combo:number, lastDate:'YYYYMMDD' }
+  },
+
+  // ==================== MORNING EMAIL CONFIG ====================
+  EMAIL: {
+    // Master on/off switch for the daily summary email.
+    ENABLED: true,
+    // Recipient address. Empty string => the script owner's account
+    // (Session.getEffectiveUser().getEmail()).
+    RECIPIENT: '',
+    // DocumentProperties key tracking the last date we sent (no dupes).
+    LAST_SENT_PROP: 'lastEmailDate',
+  },
+
+  // ==================== CALENDAR SYNC CONFIG ====================
+  // One-way Google Calendar -> Weekly grid. Reads events for the current
+  // week and drops their titles into the matching day/time slots.
+  CALENDAR: {
+    // Master on/off switch for calendar sync.
+    ENABLED: true,
+    // Empty string => primary/default calendar; otherwise a calendar name.
+    CALENDAR_NAME: '',
+    // Skip all-day events (they don't map to a 30-min time slot).
+    SKIP_ALL_DAY: true,
+    // Synced event titles are arbitrary strings, not Tasks-list entries.
+    // When true, remove the task-cell dropdown on cells written by the
+    // sync so those titles aren't flagged "invalid". Set false to keep
+    // the dropdown validation on every cell.
+    CLEAR_DROPDOWN: true,
+    // DocumentProperties key listing "row,col" cells written by the last
+    // sync, so re-syncing can clear stale ones instead of duplicating.
+    SYNCED_CELLS_PROP: 'calSyncCells',
+  },
+
+  // ==================== XP / LEVELS / BADGES CONFIG ====================
+  XP: {
+    // Level curve: XP needed to advance from level L to L+1 is
+    // BASE + (L-1) * STEP. Cumulative thresholds: L1=0, L2=50, L3=125,
+    // L4=225, L5=350, ... XP is lifetime and never reset by New Week.
+    BASE: 50,
+    STEP: 25,
+    PROP_KEY: 'xpState', // JSON { xp:number, level:number }
+    BADGES_PROP: 'xpBadges', // JSON array of earned badge ids
+    QUEST_COUNT_PROP: 'questCompletions', // lifetime quest items completed
+    // Badge thresholds.
+    CENTURION_XP: 100,
+    RISING_STAR_LEVEL: 5,
+    WEEK_WARRIOR_STREAK: 7,
+    QUEST_MASTER_COUNT: 10,
+    EARLY_BIRD_HOUR: 9, // a positive score logged before this hour
+  },
+
+  // ==================== WEEKLY BOSS CONFIG ====================
+  // One rotating weekly challenge. Deterministically chosen per week from
+  // DEFS. Defeating it (progress >= target) grants REWARD_XP + a badge,
+  // once per week. Progress for 'points' bosses is this week's Summary
+  // total; 'quests' bosses count quest items completed this week.
+  BOSS: {
+    REWARD_XP: 20,
+    PROP_KEY: 'weeklyBoss', // JSON { weekStart, bossId, defeated, questCount }
+    DEFS: [
+      { id: 'points_40', type: 'points', target: 40, emoji: '🐉', name: 'Point Dragon' },
+      { id: 'points_60', type: 'points', target: 60, emoji: '👹', name: 'Score Ogre' },
+      { id: 'quests_5', type: 'quests', target: 5, emoji: '🧙', name: 'Quest Warden' },
+      { id: 'points_30', type: 'points', target: 30, emoji: '🦇', name: 'Focus Bat' },
+    ],
+  },
+
   // ==================== COLORS ====================
   COLORS: {
     TODAY_HIGHLIGHT: '#FFFF00', // Yellow
@@ -95,6 +181,7 @@ const CONFIG = {
     CURRENT_TIME: '#FFFF00', // Yellow for current hour
     CLEAR: '#FFFFFF',
     BUTTON_FILL: '#DCE6F1', // Light blue control-bar buttons
+    QUEST_HIGHLIGHT: '#FFD700', // Gold — today's featured quest items
   },
 
   // ==================== DRIVE / ARCHIVE ====================

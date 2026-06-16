@@ -10,6 +10,38 @@
  */
 
 /**
+ * Reconstruct the Monday (00:00) the Weekly sheet currently represents,
+ * from B4 + the first day-number header (D4). B4 is normally the string
+ * "yyyy mm", but Google Sheets may auto-convert that entry into a real
+ * Date, so both forms are handled. Null only when truly unset.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ * @returns {Date|null}
+ */
+function getSheetWeekMonday_(sheet) {
+  const W = CONFIG.WEEKLY;
+  const dateVal = sheet.getRange(W.DATE_CELL).getValue();
+  const firstDay = parseInt(sheet.getRange(W.FIRST_DAY_HEADER_CELL).getValue(), 10) || 0;
+  if (!firstDay) return null;
+
+  let year;
+  let month; // 0-based
+  if (dateVal instanceof Date) {
+    year = dateVal.getFullYear();
+    month = dateVal.getMonth();
+  } else {
+    const parts = String(dateVal || '').trim().split(/\s+/);
+    if (parts.length < 2) return null;
+    year = parseInt(parts[0], 10);
+    month = parseInt(parts[1], 10) - 1;
+  }
+  if (isNaN(year) || isNaN(month)) return null;
+
+  const d = new Date(year, month, firstDay);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+/**
  * Initialize the Weekly sheet (run on open / new-day).
  * Detects a new week (>= 7 days since the sheet's Monday) and rolls
  * over, otherwise just refreshes highlights.
@@ -17,20 +49,8 @@
 function initializeWeeklyOnOpen() {
   const sheet = getSheetByName_(CONFIG.WEEKLY_SHEET);
   if (!sheet) return;
-  const W = CONFIG.WEEKLY;
 
-  const dateStr = String(sheet.getRange(W.DATE_CELL).getValue() || '');
-  const firstDay = parseInt(sheet.getRange(W.FIRST_DAY_HEADER_CELL).getValue(), 10) || 0;
-
-  let sheetLastMonday = null;
-  if (dateStr) {
-    const parts = dateStr.split(' ');
-    if (parts.length >= 2) {
-      const year = parseInt(parts[0], 10);
-      const month = parseInt(parts[1], 10) - 1;
-      sheetLastMonday = new Date(year, month, firstDay);
-    }
-  }
+  const sheetLastMonday = getSheetWeekMonday_(sheet);
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -124,15 +144,14 @@ function highlightCurrentDay(sheet) {
 }
 
 /**
- * Highlight the time row matching the current clock time.
+ * 1-based Weekly row whose time value best matches the current clock time
+ * (the latest slot at/just before now), or -1 if none.
  * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ * @returns {number}
  */
-function highlightCurrentTimeRow(sheet) {
+function getCurrentTimeRow_(sheet) {
   const W = CONFIG.WEEKLY;
   const slotCount = W.LAST_TIME_ROW - W.DATA_START_ROW + 1;
-
-  // Clear previous time-column highlight.
-  sheet.getRange(W.DATA_START_ROW, W.TIME_COLUMN, slotCount, 1).setBackground(null);
 
   const now = new Date();
   const currentTimeDecimal = now.getHours() + now.getMinutes() / 60;
@@ -168,8 +187,22 @@ function highlightCurrentTimeRow(sheet) {
     }
   }
 
-  if (bestRowIndex < 0) return;
-  const row = W.DATA_START_ROW + bestRowIndex;
+  return bestRowIndex < 0 ? -1 : W.DATA_START_ROW + bestRowIndex;
+}
+
+/**
+ * Highlight the time row matching the current clock time.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ */
+function highlightCurrentTimeRow(sheet) {
+  const W = CONFIG.WEEKLY;
+  const slotCount = W.LAST_TIME_ROW - W.DATA_START_ROW + 1;
+
+  // Clear previous time-column highlight.
+  sheet.getRange(W.DATA_START_ROW, W.TIME_COLUMN, slotCount, 1).setBackground(null);
+
+  const row = getCurrentTimeRow_(sheet);
+  if (row < 0) return;
   sheet.getRange(row, W.TIME_COLUMN).setBackground(CONFIG.COLORS.CURRENT_TIME);
 
   // If the current day's slot has no score yet, highlight task+score too.
@@ -311,6 +344,11 @@ function processWeeklyScoreChange(row, col, newScore) {
     const currentTaskScore = isNewTask ? 0 : parseFloat(scores[lookupIndex][0]) || 0;
 
     weightedScore = taskWeight * newScore;
+    if (weightedScore > 0) {
+      const qTaskMult = questTaskMultiplier_(taskName); // Daily Quest bonus
+      weightedScore *= qTaskMult;
+      if (qTaskMult > 1) weightedScore *= comboMultiplierForToday_(); // streak combo
+    }
     newDailyTotal = currentDailyTotal + weightedScore;
 
     const color =
@@ -348,8 +386,23 @@ function processWeeklyScoreChange(row, col, newScore) {
   // Summary update owns its own lock — call after releasing ours.
   updateSummary(weightedScore > 0 ? weightedScore : 0, weightedScore < 0 ? weightedScore : 0);
 
+  if (weightedScore > 0) {
+    awardXp_(weightedScore);
+    maybeAwardEarlyBird_(new Date());
+    checkBossDefeat_();
+  }
+
+  const isQuestTask = weightedScore > 0 && questTaskMultiplier_(taskName) > 1;
+  let comboNote = '';
+  if (isQuestTask) {
+    const comboDays = advanceComboForToday_();
+    markQuestDone_('task', taskName);
+    if (comboDays > 1) comboNote = ' 🔥' + comboDays + 'd combo';
+  }
+
   toast_(
-    '"' + taskName + '" scored ' + weightedScore.toFixed(2) + ' (daily ' + newDailyTotal.toFixed(2) + ')',
+    '"' + taskName + '" scored ' + weightedScore.toFixed(2) + ' (daily ' + newDailyTotal.toFixed(2) + ')' +
+      (isQuestTask ? ' ⭐ Quest bonus!' : '') + comboNote,
     'Weekly Plan'
   );
 }

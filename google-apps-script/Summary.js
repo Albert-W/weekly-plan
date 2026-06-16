@@ -72,17 +72,17 @@ function updateSummary(positiveScore, negativeScore) {
 }
 
 /**
- * Read today's running scores from the Summary sheet.
+ * Read the running scores for a specific date from the Summary sheet.
+ * @param {string} dateStr YYYYMMDD
  * @returns {{positive: number, negative: number, total: number}|null}
- *   null when the sheet is missing or today's row isn't recorded yet.
+ *   null when the sheet is missing or that date's row isn't recorded.
  */
-function getTodayScore() {
+function getSummaryForDate_(dateStr) {
   const sheet = getSheetByName_(CONFIG.SUMMARY_SHEET);
   if (!sheet) return null;
 
   const lastRow = Math.max(getLastRowInColumn_(sheet, 1), 1);
   const rows = sheet.getRange('A1:F' + lastRow).getValues();
-  const todayStr = formatDateYYYYMMDD(new Date());
 
   const toNumber = (v) => {
     const n = parseFloat(v);
@@ -90,7 +90,7 @@ function getTodayScore() {
   };
 
   for (let i = 0; i < rows.length; i++) {
-    if (String(rows[i][0]) === todayStr) {
+    if (String(rows[i][0]) === dateStr) {
       return {
         positive: toNumber(rows[i][3]),
         negative: toNumber(rows[i][4]),
@@ -99,6 +99,15 @@ function getTodayScore() {
     }
   }
   return null;
+}
+
+/**
+ * Read today's running scores from the Summary sheet.
+ * @returns {{positive: number, negative: number, total: number}|null}
+ *   null when the sheet is missing or today's row isn't recorded yet.
+ */
+function getTodayScore() {
+  return getSummaryForDate_(formatDateYYYYMMDD(new Date()));
 }
 
 /**

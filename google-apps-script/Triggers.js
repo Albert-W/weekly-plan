@@ -34,8 +34,10 @@ function onOpen() {
     .addItem('Recalculate now', 'recalculateWeek')
     .addItem('Add task…', 'addTaskPrompt_')
     .addItem('Random pick', 'randomPickFromUI')
+    .addItem('Sync calendar → Weekly', 'syncCalendarFromUI')
     .addSeparator()
     .addItem('Export all to Drive', 'exportAllFromUI')
+    .addItem('Email summary now', 'sendSummaryEmailNowFromUI')
     .addItem('Start new week…', 'startNewWeekWithConfirm_')
     .addToUi();
 
@@ -245,6 +247,12 @@ function runDailyInitCore_() {
   safeInit_('Weekly init skipped', function () {
     if (getSheetByName_(CONFIG.WEEKLY_SHEET)) initializeWeeklyOnOpen();
   });
+  safeInit_('Daily quest skipped', function () {
+    ensureDailyQuest_();
+  });
+  safeInit_('Weekly boss skipped', function () {
+    ensureWeeklyBoss_();
+  });
   PropertiesService.getDocumentProperties().setProperty(
     'lastInitDate',
     formatDateYYYYMMDD(new Date())
@@ -265,10 +273,18 @@ function initialize() {
 
 /**
  * Time-driven daily trigger entry point. Runs init even when no one has
- * the sheet open, so archiving/reset and highlights stay current.
+ * the sheet open, so archiving/reset and highlights stay current, then
+ * sends the morning summary email (once per day). The email send lives
+ * here — not in runDailyInitCore_ — so it never fires on sidebar opens.
  */
 function dailyMaintenance() {
   runDailyInitCore_();
+  safeInit_('Calendar sync skipped', function () {
+    syncCalendarToWeekly_();
+  });
+  safeInit_('Morning email skipped', function () {
+    sendMorningEmail_(false);
+  });
 }
 
 // ----------------------------------------------------------------------
@@ -283,6 +299,16 @@ function getCurrentSheetName() {
 /** @returns {{positive:number,negative:number,total:number}|null} */
 function getTodayScoreFromUI() {
   return getTodayScore();
+}
+
+/**
+ * Recent activity-log entries for the sidebar "Activity Log" panel
+ * (newest first). Captures every toast_ — including those fired from
+ * edit/selection triggers that the sidebar can't otherwise observe.
+ * @returns {Array<{ts:number,title:string,msg:string,type:string}>}
+ */
+function getActivityLogFromUI() {
+  return getActivityLog_();
 }
 
 /** @returns {number} slots filled */
@@ -329,6 +355,11 @@ function addTaskPrompt_() {
 /** @returns {string} status message */
 function sortHabitsFromUI() {
   return sortHabits();
+}
+
+/** @returns {string} status message */
+function sortTasksFromUI() {
+  return sortTasks();
 }
 
 /** @returns {string} status message */

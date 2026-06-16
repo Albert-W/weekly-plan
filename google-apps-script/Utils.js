@@ -187,13 +187,92 @@ function getLastRowInColumn_(sheet, col) {
   return 0;
 }
 
+// ----------------------------------------------------------------------
+// Activity log (surfaced in the sidebar "Activity Log" panel)
+// ----------------------------------------------------------------------
+
+// Apps Script has no server->client push: the sidebar cannot be notified
+// when a toast fires from an edit/selection trigger. So every toast is
+// also persisted to this small ring buffer in DocumentProperties, and the
+// sidebar reads it back (see getActivityLogFromUI). This is why a toast
+// that flashes by — even one from a background trigger — is never lost.
+var LOG_PROP_KEY_ = 'activityLog';
+var LOG_MAX_ENTRIES_ = 10;
+
 /**
- * Show a transient status message to the user (toast). The GAS
- * equivalent of the Office build's showStatus banner.
+ * Append a message to the persisted activity log (newest first, capped at
+ * LOG_MAX_ENTRIES_). Best-effort: never throws, so it can't break callers.
  * @param {string} message
  * @param {string} [title]
+ * @param {string} [type] 'info' | 'success' | 'warning' | 'error'
  */
-function toast_(message, title) {
+function pushActivityLog_(message, title, type) {
+  let lock = null;
+  try {
+    lock = LockService.getDocumentLock();
+    lock.tryLock(2000);
+  } catch (e) {
+    lock = null;
+  }
+  try {
+    const props = PropertiesService.getDocumentProperties();
+    let entries = [];
+    const raw = props.getProperty(LOG_PROP_KEY_);
+    if (raw) {
+      try {
+        entries = JSON.parse(raw) || [];
+      } catch (e) {
+        entries = [];
+      }
+    }
+    entries.unshift({
+      ts: new Date().getTime(),
+      title: title || 'Weekly Plan',
+      msg: String(message),
+      type: type || 'info',
+    });
+    if (entries.length > LOG_MAX_ENTRIES_) {
+      entries = entries.slice(0, LOG_MAX_ENTRIES_);
+    }
+    props.setProperty(LOG_PROP_KEY_, JSON.stringify(entries));
+  } catch (e) {
+    Logger.log('pushActivityLog_ failed: ' + (e && e.message ? e.message : e));
+  } finally {
+    if (lock) {
+      try {
+        lock.releaseLock();
+      } catch (e) {
+        // ignore
+      }
+    }
+  }
+}
+
+/**
+ * Read the persisted activity log, newest first.
+ * @returns {Array<{ts:number,title:string,msg:string,type:string}>}
+ */
+function getActivityLog_() {
+  try {
+    const raw = PropertiesService.getDocumentProperties().getProperty(LOG_PROP_KEY_);
+    if (!raw) return [];
+    return JSON.parse(raw) || [];
+  } catch (e) {
+    return [];
+  }
+}
+
+/**
+ * Show a transient status message to the user (toast). The GAS
+ * equivalent of the Office build's showStatus banner. Every message is
+ * also persisted to the activity log so the sidebar can show it even
+ * after the toast disappears (or never rendered, e.g. from a trigger).
+ * @param {string} message
+ * @param {string} [title]
+ * @param {string} [type] 'info' | 'success' | 'warning' | 'error'
+ */
+function toast_(message, title, type) {
+  pushActivityLog_(message, title, type);
   try {
     getSpreadsheet_().toast(message, title || 'Weekly Plan', 5);
   } catch (e) {

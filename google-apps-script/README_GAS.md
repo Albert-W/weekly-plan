@@ -33,11 +33,16 @@ in-sheet Archive tab, and a daily maintenance trigger).
 | `Config.js` | `config.js` | All constants (sheet names, layout, colors, scoring) |
 | `Utils.js` | `utils.js` | Date + base-26 column helpers, GAS sheet helpers |
 | `Setup.js` | *(new)* | `setUpSheets()` auto-builds the whole structure |
-| `Tasks.js` | `tasks.js` | Create task, last-row lookup |
+| `Tasks.js` | `tasks.js` | Create/delete task, last-row lookup, sort by weight |
 | `Summary.js` | `summary.js` | Daily score accumulation, today's score, CSV export |
 | `Export.js` | `export.js` | CSV build, Archive-sheet append, Drive save |
 | `Weekly.js` | `weekly.js` | Init, highlights, random pick, score processing, rollover |
 | `Habits.js` | `habits.js` | Checkbox completion, streaks, sort, date window |
+| `Quest.js` | *(new)* | Daily Quest: per-day habit+task pick, bonus, highlights, streak combos |
+| `Email.js` | *(new)* | Morning summary email (yesterday's recap + today's quest) |
+| `Calendar.js` | *(new)* | One-way Google Calendar → Weekly grid import |
+| `Xp.js` | *(new)* | XP, levels & badges (lifetime progression) |
+| `Boss.js` | *(new)* | Weekly Boss: rotating objective, HP bar, XP+badge reward |
 | `Triggers.js` | `app.js` + `events.js` | Menu, sidebar, onEdit dispatch, daily trigger, init |
 | `Sidebar.html` | `taskpane.html` | Sidebar UI (`google.script.run` wiring) |
 | `appsscript.json` | *(new)* | Manifest: V8, timezone, OAuth scopes |
@@ -83,7 +88,7 @@ authorize (steps 7–9 below).
 2. **Extensions → Apps Script**. This opens the bound script project.
 3. For each `*.js` file in this folder: create a matching **Script** file in the
    editor and paste the contents.
-   - `Config, Utils, Setup, Tasks, Summary, Export, Weekly, Habits, Triggers`
+   - `Config, Utils, Setup, Tasks, Summary, Export, Weekly, Habits, Quest, Email, Calendar, Xp, Boss, Triggers`
 4. Create an **HTML** file named `Sidebar` and paste `Sidebar.html` into it.
    (The editor names it `Sidebar.html` — do **not** include the `.html` in the
    name field.)
