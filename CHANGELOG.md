@@ -2,6 +2,54 @@
 
 All notable changes to the Weekly Plan add-in. Newest first.
 
+## 2026-06-18 — Meal-time AI habit stories (Google Sheets edition)
+
+Added a second Telegram cron: three times a day a random habit is picked and
+**Google Gemini** writes a short, original motivating story about it.
+
+- **New `google-apps-script/Story.js`** — picks a random habit
+  (`pickRandomHabit_`), chooses a fresh narrative angle (rotated + recency-aware
+  so stories never repeat), prompts Gemini via `generateContent`
+  (`generateStory_`), and sends the result to Telegram as plain text
+  (`sendMealStory_`). Per-meal-slot dedup + enable gate; manual preview via
+  `sendMealStoryNowFromUI`. Gemini key setup via `setUpGemini`.
+- **3 new `mealStory` time triggers** at `CONFIG.STORY.MEAL_HOURS`
+  (default 8:00 / 13:00 / 19:00), registered by `installTriggers`.
+- **`Telegram.js`** — `sendTelegramMessage_` now takes an optional `parseMode`
+  (default `HTML`; `null` sends plain text, used for LLM prose).
+- **Config** — added `CONFIG.GEMINI` (key prop, model, temperature, token cap)
+  and `CONFIG.STORY` (enabled, meal hours, dedup + angle-history props, angle
+  list).
+- **Menu** — added **Send meal story now** and **Set up Gemini…**.
+- **Docs** — README_GAS.md gains a "Meal-time habit stories" section + file-map
+  entry. (Reuses the `script.external_request` scope added for Telegram.)
+
+## 2026-06-18 — Telegram morning notification (Google Sheets edition)
+
+Added a daily **Telegram** morning recap as the primary notification channel,
+replacing the email recap (which is now disabled by default).
+
+- **New `google-apps-script/Telegram.js`** — builds and sends the morning recap
+  (yesterday's score, today's Daily Quest habit + task, combo, XP/level, weekly
+  boss) via the Telegram Bot API (`sendMessage`, HTML parse mode) using
+  `UrlFetchApp`. Enable-gated + deduped once per day.
+- **Credentials in Script Properties**, never in source — set once via the new
+  **Weekly Plan → Set up Telegram…** menu item (`setUpTelegram`), which prompts
+  for the bot token + chat id and sends a confirmation message. Preview any time
+  with **Send Telegram recap now**.
+- **New `morningTelegram` time trigger** (~`CONFIG.TELEGRAM.SEND_HOUR`, default
+  8am) registered by `installTriggers`. `dailyMaintenance` (~5am) no longer sends
+  the morning notification.
+- **Config** — added `CONFIG.TELEGRAM` (ENABLED, BOT_TOKEN_PROP, CHAT_ID_PROP,
+  SEND_HOUR, LAST_SENT_PROP); set `CONFIG.EMAIL.ENABLED = false`.
+- **Manifest** — added the `script.external_request` OAuth scope for outbound
+  HTTPS to the Telegram API.
+- **Docs** — README_GAS.md gains a "Morning Telegram recap" setup section and
+  file-map entry.
+
+> Note: this feature lives in the Apps Script edition only; the `src/` Office
+> add-in (and its Vitest suite) is unchanged.
+
 ## 2026-05-23 — 2026-05-24 — Test expansion, UI cleanup, correctness fire-drill
 
 Three smaller waves rolled together after the initial refactor: more test

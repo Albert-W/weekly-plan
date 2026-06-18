@@ -25,6 +25,15 @@ in-sheet Archive tab, and a daily maintenance trigger).
   a CSV in a Google **Drive** folder, then clears the grid. Runs on open and via
   a **daily trigger** even when the sheet is closed. "New Week" asks for
   confirmation first.
+- **Morning Telegram recap** — every morning (~8am) a Telegram bot sends
+  yesterday's score, today's Daily Quest (featured habit + task), your combo,
+  XP/level, and the weekly boss. Set it up once via **Weekly Plan → Set up
+  Telegram…** (see below). The legacy email recap is disabled by default.
+- **Meal-time habit stories** — three times a day (8:00 / 13:00 / 19:00) a random
+  habit is picked and **Google Gemini** writes a short, original story whose heart
+  is that habit, ending with the narrator realizing why it matters and acting on
+  it — sent to your Telegram. Stories never repeat (rotating narrative angles), to
+  keep renewing your drive to build the habit. Set up via **Set up Gemini…**.
 
 ## File map (port of `../src/taskpane/js`)
 
@@ -39,7 +48,9 @@ in-sheet Archive tab, and a daily maintenance trigger).
 | `Weekly.js` | `weekly.js` | Init, highlights, random pick, score processing, rollover |
 | `Habits.js` | `habits.js` | Checkbox completion, streaks, sort, date window |
 | `Quest.js` | *(new)* | Daily Quest: per-day habit+task pick, bonus, highlights, streak combos |
-| `Email.js` | *(new)* | Morning summary email (yesterday's recap + today's quest) |
+| `Email.js` | *(new)* | Morning summary email (yesterday's recap + today's quest) — disabled by default in favor of Telegram |
+| `Telegram.js` | *(new)* | Morning recap via a Telegram bot (yesterday's score + today's quest, ~8am) |
+| `Story.js` | *(new)* | Meal-time habit stories: random habit → Gemini story → Telegram (3×/day) |
 | `Calendar.js` | *(new)* | One-way Google Calendar → Weekly grid import |
 | `Xp.js` | *(new)* | XP, levels & badges (lifetime progression) |
 | `Boss.js` | *(new)* | Weekly Boss: rotating objective, HP bar, XP+badge reward |
@@ -88,7 +99,7 @@ authorize (steps 7–9 below).
 2. **Extensions → Apps Script**. This opens the bound script project.
 3. For each `*.js` file in this folder: create a matching **Script** file in the
    editor and paste the contents.
-   - `Config, Utils, Setup, Tasks, Summary, Export, Weekly, Habits, Quest, Email, Calendar, Xp, Boss, Triggers`
+   - `Config, Utils, Setup, Tasks, Summary, Export, Weekly, Habits, Quest, Email, Telegram, Story, Calendar, Xp, Boss, Triggers`
 4. Create an **HTML** file named `Sidebar` and paste `Sidebar.html` into it.
    (The editor names it `Sidebar.html` — do **not** include the `.html` in the
    name field.)
@@ -120,6 +131,58 @@ authorize (steps 7–9 below).
 - **Archive** — finished weeks appended with a `Week` label column.
 
 CSV archives are saved to a Drive folder named **Weekly Plan Archives**.
+
+## Morning Telegram recap
+
+Each morning (~`CONFIG.TELEGRAM.SEND_HOUR`, default **8am**, spreadsheet
+timezone) a Telegram bot DMs you the same recap the email used to send:
+yesterday's score, today's Daily Quest (featured habit + task), combo, XP/level,
+and the weekly boss. It's driven by the `morningTelegram` time trigger and
+deduped once per day.
+
+**One-time setup:**
+
+1. In Telegram, message **@BotFather**, send `/newbot`, and follow the prompts to
+   get a **bot token** (looks like `123456789:AA...`).
+2. Send any message to your new bot (so it's allowed to DM you), then message
+   **@userinfobot** to get your numeric **chat id**.
+3. In the Sheet: **Weekly Plan → Set up Telegram…**, paste the token then the
+   chat id. A test message is sent immediately so you can confirm it works.
+4. Make sure triggers are installed (**Weekly Plan → Install triggers**) and
+   authorize the new *external request* scope when prompted.
+
+Use **Weekly Plan → Send Telegram recap now** any time to preview the message.
+Credentials live in **Script Properties** (`telegramBotToken` / `telegramChatId`)
+— never in source. Turn the feature off via `CONFIG.TELEGRAM.ENABLED`, or change
+the delivery hour via `CONFIG.TELEGRAM.SEND_HOUR` (re-run Install triggers after
+changing the hour). To switch back to the email recap, set
+`CONFIG.EMAIL.ENABLED = true`.
+
+## Meal-time habit stories (Gemini)
+
+Three times a day (`CONFIG.STORY.MEAL_HOURS`, default **8:00 / 13:00 / 19:00**,
+spreadsheet timezone) a random habit is picked and **Google Gemini** writes a
+short story whose heart is that habit. The story is insightful, meaningful,
+joyful and interesting, and ends with the narrator realizing how important the
+habit is and resolving to act on it today — then it's sent to your Telegram. A
+rotating set of narrative **angles** (`CONFIG.STORY.ANGLES`) is used and the
+recently-used ones are remembered, so stories stay fresh even when the same habit
+is picked again. Driven by the `mealStory` trigger and deduped per meal slot.
+
+**One-time setup:**
+
+1. Get a free **Gemini API key** at <https://aistudio.google.com> → *Get API
+   key*.
+2. In the Sheet: **Weekly Plan → Set up Gemini…** and paste the key.
+3. Make sure Telegram is set up (above) and triggers are installed
+   (**Weekly Plan → Install triggers**); authorize the *external request* scope
+   if prompted.
+
+Use **Weekly Plan → Send meal story now** to preview a story any time. The key
+lives in **Script Properties** (`geminiApiKey`) — never in source. Turn the
+feature off via `CONFIG.STORY.ENABLED`, change the meal times via
+`CONFIG.STORY.MEAL_HOURS` (re-run Install triggers after), or change the model
+via `CONFIG.GEMINI.MODEL`.
 
 ## Notable differences vs. the Excel add-in (intentional)
 

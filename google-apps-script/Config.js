@@ -109,13 +109,92 @@ const CONFIG = {
 
   // ==================== MORNING EMAIL CONFIG ====================
   EMAIL: {
-    // Master on/off switch for the daily summary email.
-    ENABLED: true,
+    // Master on/off switch for the daily summary email. Disabled by
+    // default — the morning recap is delivered via Telegram instead (see
+    // TELEGRAM below). Flip back to true to re-enable the email.
+    ENABLED: false,
     // Recipient address. Empty string => the script owner's account
     // (Session.getEffectiveUser().getEmail()).
     RECIPIENT: '',
     // DocumentProperties key tracking the last date we sent (no dupes).
     LAST_SENT_PROP: 'lastEmailDate',
+  },
+
+  // ==================== MORNING TELEGRAM CONFIG ====================
+  // Daily morning recap delivered via a Telegram bot (yesterday's score,
+  // today's quest habit+task, combo, XP/level, weekly boss). Driven by
+  // the time-based `morningTelegram` trigger (~SEND_HOUR) and deduped
+  // per day via LAST_SENT_PROP. Requires the script.external_request
+  // OAuth scope (see appsscript.json).
+  TELEGRAM: {
+    // Master on/off switch for the daily Telegram recap.
+    ENABLED: true,
+    // Bot credentials are NOT stored in source. They live in Script
+    // Properties under these keys — set them once via the "Set up
+    // Telegram…" menu item (setUpTelegram) or the Script Properties
+    // editor. Token comes from @BotFather; chat id is your numeric id.
+    BOT_TOKEN_PROP: 'telegramBotToken',
+    CHAT_ID_PROP: 'telegramChatId',
+    // Hour of day (0–23, spreadsheet timezone) for the morning send.
+    // Apps Script time triggers fire within that hour window.
+    SEND_HOUR: 8,
+    // DocumentProperties key tracking the last date we sent (no dupes).
+    LAST_SENT_PROP: 'lastTelegramDate',
+  },
+
+  // ==================== GEMINI (LLM) CONFIG ====================
+  // Google Gemini is used to write the meal-time habit stories (see STORY
+  // below). The API key lives in Script Properties (set via "Set up
+  // Gemini…" / setUpGemini), never in source. Calls go out over HTTPS, so
+  // the script.external_request OAuth scope is required.
+  GEMINI: {
+    API_KEY_PROP: 'geminiApiKey',
+    // Model name on the Generative Language API. Change if a newer/older
+    // model is preferred (e.g. 'gemini-1.5-flash').
+    MODEL: 'gemini-3.1-flash-lite',
+    // Higher temperature => more varied, surprising stories.
+    TEMPERATURE: 1.0,
+    MAX_OUTPUT_TOKENS: 1000,
+  },
+
+  // ==================== MEAL-TIME HABIT STORY CONFIG ====================
+  // Three times a day (meal times) a random habit is picked and Gemini
+  // writes a short, motivating story whose heart is that habit — ending
+  // with the narrator realizing why it matters and acting on it. Sent to
+  // Telegram. Recent narrative "angles" are remembered so stories don't
+  // repeat, even when the same habit comes up again.
+  STORY: {
+    // Master on/off switch for the meal-time stories.
+    ENABLED: true,
+    // Hours (0–23, spreadsheet timezone) to send a story: breakfast,
+    // lunch, dinner. Re-run Install triggers after changing these.
+    MEAL_HOURS: [8, 13, 19],
+    // DocumentProperties key tracking which meal slots were sent today.
+    // JSON: { date:'YYYYMMDD', hours:[8,13] }
+    LAST_SENT_PROP: 'lastMealStory',
+    // DocumentProperties key holding the recently-used angles (JSON array)
+    // so we can ask the model to avoid repeating them.
+    RECENT_ANGLES_PROP: 'storyAngles',
+    // How many recent angles to remember/avoid.
+    ANGLE_HISTORY: 8,
+    // Narrative framings rotated to keep stories fresh. One is picked per
+    // story (preferring ones not used recently) and fed to the prompt.
+    ANGLES: [
+      "a historical figure's untold quiet moment",
+      'a gentle animal fable',
+      'a near-future science-fiction vignette',
+      'an ordinary morning that turns luminous',
+      'an athlete on the edge of giving up',
+      'a letter from your older, wiser self',
+      "a grandparent's hard-won lesson",
+      'a traveler alone in a foreign city',
+      'a small failure that became a turning point',
+      'a mentor and an apprentice',
+      'a myth or legend retold',
+      'a childhood memory rediscovered years later',
+      'two strangers on a long train ride',
+      'a craftsperson perfecting one small thing',
+    ],
   },
 
   // ==================== CALENDAR SYNC CONFIG ====================
