@@ -154,7 +154,7 @@ const CONFIG = {
     MODEL: 'gemini-3.1-flash-lite',
     // Higher temperature => more varied, surprising stories.
     TEMPERATURE: 1.0,
-    MAX_OUTPUT_TOKENS: 1000,
+    MAX_OUTPUT_TOKENS: 500,
   },
 
   // ==================== MEAL-TIME HABIT STORY CONFIG ====================

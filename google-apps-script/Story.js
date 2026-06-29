@@ -159,6 +159,7 @@ function buildStoryPrompt_(habitName, angle) {
     'Even if this habit has come up before, choose a different situation, character, setting, and insight.',
     '',
     'IMPORTANT: Write the entire story in Simplified Chinese (简体中文). Use natural, fluent Chinese — do not include any English except, if unavoidable, the habit name itself.',
+    'Keep it very short: at most 3 short paragraphs and under 200 Chinese characters total.',
     'Style: vivid but concise, short paragraphs, no markdown, no headings, no hashtags, no emojis.',
     'End with a single uplifting sentence on its own line that nudges me to act today.',
   ].join('\n');
