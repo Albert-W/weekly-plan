@@ -123,32 +123,20 @@ function checkBossDefeat_() {
   if (!def || state.defeated) return;
   if (bossProgress_(state, def) < def.target) return;
 
-  let newlyDefeated = false;
-  let lock = null;
-  try {
-    lock = LockService.getDocumentLock();
-    lock.tryLock(2000);
-  } catch (e) {
-    lock = null;
-  }
-  try {
-    const s = getBossState_();
-    if (s.weekStart === state.weekStart && s.bossId === state.bossId && !s.defeated) {
-      s.defeated = true;
-      saveBossState_(s);
-      newlyDefeated = true;
-    }
-  } catch (e) {
-    Logger.log('checkBossDefeat_ failed: ' + (e && e.message ? e.message : e));
-  } finally {
-    if (lock) {
-      try {
-        lock.releaseLock();
-      } catch (e) {
-        // ignore
+  const newlyDefeated = tryWithLock_(function () {
+    try {
+      const s = getBossState_();
+      if (s.weekStart === state.weekStart && s.bossId === state.bossId && !s.defeated) {
+        s.defeated = true;
+        saveBossState_(s);
+        return true;
       }
+      return false;
+    } catch (e) {
+      Logger.log('checkBossDefeat_ failed: ' + (e && e.message ? e.message : e));
+      return false;
     }
-  }
+  });
 
   if (newlyDefeated) {
     awardXp_(CONFIG.BOSS.REWARD_XP);
@@ -166,28 +154,15 @@ function checkBossDefeat_() {
  * Called from Quest.markQuestDone_ when a flag flips.
  */
 function bumpBossQuestCount_() {
-  let lock = null;
-  try {
-    lock = LockService.getDocumentLock();
-    lock.tryLock(2000);
-  } catch (e) {
-    lock = null;
-  }
-  try {
-    const s = ensureWeeklyBoss_();
-    s.questCount = (s.questCount || 0) + 1;
-    saveBossState_(s);
-  } catch (e) {
-    Logger.log('bumpBossQuestCount_ failed: ' + (e && e.message ? e.message : e));
-  } finally {
-    if (lock) {
-      try {
-        lock.releaseLock();
-      } catch (e) {
-        // ignore
-      }
+  tryWithLock_(function () {
+    try {
+      const s = ensureWeeklyBoss_();
+      s.questCount = (s.questCount || 0) + 1;
+      saveBossState_(s);
+    } catch (e) {
+      Logger.log('bumpBossQuestCount_ failed: ' + (e && e.message ? e.message : e));
     }
-  }
+  });
   checkBossDefeat_();
 }
 

@@ -148,7 +148,13 @@ function getCurrentDayIndex(date) {
  * @returns {GoogleAppsScript.Spreadsheet.Spreadsheet}
  */
 function getSpreadsheet_() {
-  return SpreadsheetApp.getActiveSpreadsheet();
+  var ss = null;
+  try { ss = SpreadsheetApp.getActiveSpreadsheet(); } catch (e) {}
+  if (ss) return ss;
+  // Web App context: no active spreadsheet — fall back to openById
+  var id = PropertiesService.getScriptProperties().getProperty('spreadsheetId');
+  if (!id) throw new Error('spreadsheetId not set in Script Properties — run one-time setup');
+  return SpreadsheetApp.openById(id);
 }
 
 /**
@@ -196,8 +202,8 @@ function getLastRowInColumn_(sheet, col) {
 // also persisted to this small ring buffer in DocumentProperties, and the
 // sidebar reads it back (see getActivityLogFromUI). This is why a toast
 // that flashes by — even one from a background trigger — is never lost.
-var LOG_PROP_KEY_ = 'activityLog';
-var LOG_MAX_ENTRIES_ = 10;
+const LOG_PROP_KEY_ = 'activityLog';
+const LOG_MAX_ENTRIES_ = 10;
 
 /**
  * Append a message to the persisted activity log (newest first, capped at
@@ -207,45 +213,32 @@ var LOG_MAX_ENTRIES_ = 10;
  * @param {string} [type] 'info' | 'success' | 'warning' | 'error'
  */
 function pushActivityLog_(message, title, type) {
-  let lock = null;
-  try {
-    lock = LockService.getDocumentLock();
-    lock.tryLock(2000);
-  } catch (e) {
-    lock = null;
-  }
-  try {
-    const props = PropertiesService.getDocumentProperties();
-    let entries = [];
-    const raw = props.getProperty(LOG_PROP_KEY_);
-    if (raw) {
-      try {
-        entries = JSON.parse(raw) || [];
-      } catch (e) {
-        entries = [];
+  tryWithLock_(function () {
+    try {
+      const props = PropertiesService.getDocumentProperties();
+      let entries = [];
+      const raw = props.getProperty(LOG_PROP_KEY_);
+      if (raw) {
+        try {
+          entries = JSON.parse(raw) || [];
+        } catch (e) {
+          entries = [];
+        }
       }
-    }
-    entries.unshift({
-      ts: new Date().getTime(),
-      title: title || 'Weekly Plan',
-      msg: String(message),
-      type: type || 'info',
-    });
-    if (entries.length > LOG_MAX_ENTRIES_) {
-      entries = entries.slice(0, LOG_MAX_ENTRIES_);
-    }
-    props.setProperty(LOG_PROP_KEY_, JSON.stringify(entries));
-  } catch (e) {
-    Logger.log('pushActivityLog_ failed: ' + (e && e.message ? e.message : e));
-  } finally {
-    if (lock) {
-      try {
-        lock.releaseLock();
-      } catch (e) {
-        // ignore
+      entries.unshift({
+        ts: new Date().getTime(),
+        title: title || 'Weekly Plan',
+        msg: String(message),
+        type: type || 'info',
+      });
+      if (entries.length > LOG_MAX_ENTRIES_) {
+        entries = entries.slice(0, LOG_MAX_ENTRIES_);
       }
+      props.setProperty(LOG_PROP_KEY_, JSON.stringify(entries));
+    } catch (e) {
+      Logger.log('pushActivityLog_ failed: ' + (e && e.message ? e.message : e));
     }
-  }
+  });
 }
 
 /**
@@ -295,5 +288,59 @@ function safeInit_(label, fn) {
   } catch (e) {
     Logger.log(label + ': ' + (e && e.message ? e.message : e));
     return null;
+  }
+}
+
+// ----------------------------------------------------------------------
+// Lock helpers
+// ----------------------------------------------------------------------
+// Every read-modify-write function that touches DocumentProperties or
+// the spreadsheet needs mutual exclusion. These two helpers eliminate the
+// repeated getDocumentLock() → waitLock/tryLock → try → finally release
+// boilerplate that was duplicated across ~15 functions.
+//
+// withLock_   — for critical paths (score processing, habit recording):
+//               blocks until the lock is acquired or throws on timeout.
+// tryWithLock_ — for non-critical paths (badges, activity log, quest
+//               marking): tries to acquire, silently skips if the lock
+//               is contended after timeoutMs.
+
+/**
+ * Acquire the document lock, run fn, release. Throws if the lock cannot
+ * be acquired within timeoutMs (via waitLock).
+ * @param {Function} fn  work to run under the lock
+ * @param {number} [timeoutMs=10000]
+ * @returns {*} fn's return value
+ */
+function withLock_(fn, timeoutMs) {
+  const lock = LockService.getDocumentLock();
+  lock.waitLock(timeoutMs || 10000);
+  try {
+    return fn();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Try to acquire the document lock within timeoutMs. If acquired, run fn
+ * and release. If not (timeout or error acquiring), return null silently.
+ * @param {Function} fn  work to run under the lock
+ * @param {number} [timeoutMs=2000]
+ * @returns {*} fn's return value, or null if the lock was not acquired
+ */
+function tryWithLock_(fn, timeoutMs) {
+  const lock = LockService.getDocumentLock();
+  let acquired = false;
+  try {
+    acquired = lock.tryLock(timeoutMs || 2000);
+  } catch (e) {
+    // lock service unavailable — skip
+  }
+  if (!acquired) return null;
+  try {
+    return fn();
+  } finally {
+    lock.releaseLock();
   }
 }

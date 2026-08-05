@@ -82,6 +82,14 @@ function handleEdit(e) {
         row >= W.DATA_START_ROW &&
         row <= W.LAST_TIME_ROW
       ) {
+        // Guard against re-scoring: once a score cell has a value,
+        // editing it again would double-count the contribution without
+        // subtracting the old one. The oldValue property is set by the
+        // installable onEdit trigger for single-cell edits.
+        if (e.oldValue !== undefined && e.oldValue !== '' && e.oldValue !== null) {
+          toast_('Score already set — cannot modify once scored.', 'Weekly Plan', 'warning');
+          return;
+        }
         const score = parseFloat(e.range.getValue());
         if (!isNaN(score)) processWeeklyScoreChange(row, col, score);
       }

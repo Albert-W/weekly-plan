@@ -6,6 +6,30 @@
  * to every other module — no `window.*` export needed.
  */
 
+// ============================================================================
+// DocumentProperties keys
+// ============================================================================
+// Every piece of persistent state is stored in DocumentProperties under a
+// flat key. To keep the namespace manageable, new keys should follow the
+// pattern "wp.<domain>.<name>" (e.g. "wp.xp.state", "wp.quest.combo").
+// Existing keys (migrated from the initial flat namespace) are listed here
+// as a registry — don't reuse a key without checking this list:
+//
+//   activityLog         questCombo          xpState
+//   dailyQuest          xpBadges            questCompletions
+//   weeklyBoss          calSyncCells        storyAngles
+//   lastMealStory       lastTelegramDate    lastEmailDate
+//   habitsColorResetDate  lastInitDate
+// ============================================================================
+
+// ============================================================================
+// Timezone
+// ============================================================================
+// This project's timezone is set in appsscript.json ("Europe/Dublin").
+// Changing it requires updating appsscript.json AND re-creating time-driven
+// triggers (installTriggers) so they fire at the correct local hours.
+// ============================================================================
+
 const CONFIG = {
   // ==================== SHEET NAMES ====================
   HABITS_SHEET: 'Habits',
@@ -265,4 +289,22 @@ const CONFIG = {
 
   // ==================== DRIVE / ARCHIVE ====================
   DRIVE_ARCHIVE_FOLDER: 'Weekly Plan Archives',
+
+  // ==================== SYNC (Mac integration) ====================
+  // GAS Web App (WebApp.js) exposes the weekly-plan state as JSON so the
+  // self-discipline-bot on the Mac Mini can pull it into its local SQLite.
+  // SYNC_AUTH_KEY is a shared secret set in Script Properties (not in source).
+  // The Mac appends ?k=<key> to the Web App URL; the Web App checks it.
+  //
+  // One-time setup (run once in the Script Editor):
+  //   PropertiesService.getScriptProperties()
+  //     .setProperty('syncAuthKey', '<your-random-secret>');
+  //   PropertiesService.getScriptProperties()
+  //     .setProperty('spreadsheetId', SpreadsheetApp.getActiveSpreadsheet().getId());
+  SYNC: {
+    // Script Properties key for the shared auth secret.
+    AUTH_KEY_PROP: 'syncAuthKey',
+    // Script Properties key for the bound spreadsheet ID (Web App fallback).
+    SPREADSHEET_ID_PROP: 'spreadsheetId',
+  },
 };

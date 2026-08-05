@@ -23,7 +23,7 @@ function getLastHabitRow_() {
  * "done" fills were last reset. Used so the green completion color clears
  * exactly once per new day, not on every sidebar open.
  */
-var HABITS_COLOR_RESET_PROP_ = 'habitsColorResetDate';
+const HABITS_COLOR_RESET_PROP_ = 'habitsColorResetDate';
 
 /**
  * Initialize the Habits sheet (find today's column, highlight it).
@@ -182,44 +182,63 @@ function recordHabitDone(row) {
     return;
   }
 
+  // Mutable state set inside the lock, read afterwards for side effects.
   let weightedScore = 0;
   let streak = 0;
-  const lock = LockService.getDocumentLock();
+  let comboDays = 0;
+  let isQuestHabit = false;
+
+  // ------------------------------------------------------------------
+  // Read-modify-write under the document lock. The quest combo is
+  // read AND advanced atomically inside this lock (via
+  // applyComboLocked_) so a concurrent habit/score handler can't read
+  // a stale combo state and apply the wrong multiplier.
+  // ------------------------------------------------------------------
+  let finished = false;
   try {
-    lock.waitLock(10000);
+    withLock_(function () {
+      const baseScore = parseFloat(sheet.getRange(H.COLUMNS.BASE_SCORE + row).getValue()) || 1;
+      const dayStartCol = columnLetterToIndex(H.COLUMNS.DAY_START) + 1;
+      const dayValues = sheet.getRange(row, dayStartCol, 1, H.DAYS_COUNT).getValues()[0];
+      const totalCell = sheet.getRange(H.COLUMNS.TOTAL_COUNT + row);
+
+      for (let d = dayIndex - 1; d >= 0; d--) {
+        const v = dayValues[d];
+        if (v && v !== 0) streak++;
+        else break;
+      }
+
+      weightedScore = baseScore * Math.pow(H.STREAK_MULTIPLIER, streak);
+      const qHabitMult = questHabitMultiplier_(habitName); // Daily Quest bonus
+      if (qHabitMult > 1) {
+        // Atomically read AND advance the combo inside this lock
+        // so the multiplier matches the state we persist.
+        const combo = applyComboLocked_();
+        comboDays = combo.days;
+        weightedScore *= qHabitMult * combo.multiplier;
+        isQuestHabit = true;
+      } else {
+        weightedScore *= qHabitMult;
+      }
+      const currentCount = parseInt(dayValues[dayIndex], 10) || 0;
+      const currentTotal = parseInt(totalCell.getValue(), 10) || 0;
+
+      sheet.getRange(row, dayStartCol + dayIndex).setValue(currentCount + 1);
+      totalCell.setValue(currentTotal + 1);
+      sheet.getRange(H.COLUMNS.HABIT_NAME + row).setBackground(CONFIG.COLORS.POSITIVE);
+      resetCheckbox();
+      finished = true;
+    });
   } catch (e) {
-    Logger.log('recordHabitDone: lock failed: ' + e.message);
+    Logger.log('recordHabitDone: ' + (e && e.message ? e.message : e));
     resetCheckbox();
     return;
   }
 
-  try {
-    const baseScore = parseFloat(sheet.getRange(H.COLUMNS.BASE_SCORE + row).getValue()) || 1;
-    const dayStartCol = columnLetterToIndex(H.COLUMNS.DAY_START) + 1;
-    const dayValues = sheet.getRange(row, dayStartCol, 1, H.DAYS_COUNT).getValues()[0];
-    const totalCell = sheet.getRange(H.COLUMNS.TOTAL_COUNT + row);
+  if (!finished) return;
 
-    for (let d = dayIndex - 1; d >= 0; d--) {
-      const v = dayValues[d];
-      if (v && v !== 0) streak++;
-      else break;
-    }
-
-    weightedScore = baseScore * Math.pow(H.STREAK_MULTIPLIER, streak);
-    const qHabitMult = questHabitMultiplier_(habitName); // Daily Quest bonus
-    weightedScore *= qHabitMult;
-    if (qHabitMult > 1) weightedScore *= comboMultiplierForToday_(); // streak combo
-    const currentCount = parseInt(dayValues[dayIndex], 10) || 0;
-    const currentTotal = parseInt(totalCell.getValue(), 10) || 0;
-
-    sheet.getRange(row, dayStartCol + dayIndex).setValue(currentCount + 1);
-    totalCell.setValue(currentTotal + 1);
-    sheet.getRange(H.COLUMNS.HABIT_NAME + row).setBackground(CONFIG.COLORS.POSITIVE);
-    resetCheckbox();
-    SpreadsheetApp.flush();
-  } finally {
-    lock.releaseLock();
-  }
+  // Flush AFTER releasing the lock so we don't hold it during I/O.
+  SpreadsheetApp.flush();
 
   updateSummary(weightedScore, 0);
 
@@ -228,10 +247,9 @@ function recordHabitDone(row) {
   maybeAwardEarlyBird_(new Date());
   checkBossDefeat_();
 
-  const isQuestHabit = questHabitMultiplier_(habitName) > 1;
+  // Mark quest done (acquires its own lock via tryWithLock_).
   let comboNote = '';
   if (isQuestHabit) {
-    const comboDays = advanceComboForToday_();
     markQuestDone_('habit', habitName);
     if (comboDays > 1) comboNote = ' 🔥' + comboDays + 'd combo';
   }

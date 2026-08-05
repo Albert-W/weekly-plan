@@ -18,56 +18,47 @@ function updateSummary(positiveScore, negativeScore) {
   const sheet = getSheetByName_(CONFIG.SUMMARY_SHEET);
   if (!sheet) return;
 
-  const lock = LockService.getDocumentLock();
   try {
-    lock.waitLock(10000);
-  } catch (e) {
-    Logger.log('updateSummary: could not obtain lock: ' + e.message);
-    return;
-  }
+    withLock_(function () {
+      const S = CONFIG.SUMMARY;
+      const lastRow = Math.max(getLastRowInColumn_(sheet, 1), 1);
+      const rows = sheet.getRange('A1:F' + lastRow).getValues();
 
-  try {
-    const S = CONFIG.SUMMARY;
-    const lastRow = Math.max(getLastRowInColumn_(sheet, 1), 1);
-    const rows = sheet.getRange('A1:F' + lastRow).getValues();
-
-    const todayStr = formatDateYYYYMMDD(new Date());
-    let summaryRow = -1;
-    let curPos = 0;
-    let curNeg = 0;
-    let curTotal = 0;
-    for (let i = 0; i < rows.length; i++) {
-      if (String(rows[i][0]) === todayStr) {
-        summaryRow = i + 1; // 1-based
-        curPos = parseFloat(rows[i][3]) || 0;
-        curNeg = parseFloat(rows[i][4]) || 0;
-        curTotal = parseFloat(rows[i][5]) || 0;
-        break;
+      const todayStr = formatDateYYYYMMDD(new Date());
+      let summaryRow = -1;
+      let curPos = 0;
+      let curNeg = 0;
+      let curTotal = 0;
+      for (let i = 0; i < rows.length; i++) {
+        if (String(rows[i][0]) === todayStr) {
+          summaryRow = i + 1; // 1-based
+          curPos = parseFloat(rows[i][3]) || 0;
+          curNeg = parseFloat(rows[i][4]) || 0;
+          curTotal = parseFloat(rows[i][5]) || 0;
+          break;
+        }
       }
-    }
 
-    const isNewRow = summaryRow === -1;
-    if (isNewRow) summaryRow = lastRow + 1;
+      const isNewRow = summaryRow === -1;
+      if (isNewRow) summaryRow = lastRow + 1;
 
-    const newPos = positiveScore > 0 ? curPos + positiveScore : curPos;
-    const newNeg = negativeScore < 0 ? curNeg + negativeScore : curNeg;
-    const newTotal = curTotal + positiveScore + negativeScore;
+      const newPos = positiveScore > 0 ? curPos + positiveScore : curPos;
+      const newNeg = negativeScore < 0 ? curNeg + negativeScore : curNeg;
+      const newTotal = curTotal + positiveScore + negativeScore;
 
-    if (isNewRow) {
-      sheet.getRange(S.DATE_COLUMN + summaryRow).setValue(todayStr);
-    }
-    if (positiveScore > 0) {
-      sheet.getRange(S.POSITIVE_SCORE_COLUMN + summaryRow).setValue(newPos);
-    }
-    if (negativeScore < 0) {
-      sheet.getRange(S.NEGATIVE_SCORE_COLUMN + summaryRow).setValue(newNeg);
-    }
-    sheet.getRange(S.TOTAL_SCORE_COLUMN + summaryRow).setValue(newTotal);
-    SpreadsheetApp.flush();
-  } catch (error) {
-    Logger.log('Update summary error: ' + error.message);
-  } finally {
-    lock.releaseLock();
+      if (isNewRow) {
+        sheet.getRange(S.DATE_COLUMN + summaryRow).setValue(todayStr);
+      }
+      if (positiveScore > 0) {
+        sheet.getRange(S.POSITIVE_SCORE_COLUMN + summaryRow).setValue(newPos);
+      }
+      if (negativeScore < 0) {
+        sheet.getRange(S.NEGATIVE_SCORE_COLUMN + summaryRow).setValue(newNeg);
+      }
+      sheet.getRange(S.TOTAL_SCORE_COLUMN + summaryRow).setValue(newTotal);
+    });
+  } catch (e) {
+    Logger.log('Update summary error: ' + (e && e.message ? e.message : e));
   }
 }
 

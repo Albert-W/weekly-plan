@@ -13,7 +13,7 @@
  */
 
 /** Badge id -> display metadata. */
-var BADGE_META_ = {
+const BADGE_META_ = {
   centurion: { emoji: '💯', label: 'Centurion', desc: 'Earned 100 lifetime XP' },
   rising_star: { emoji: '🌟', label: 'Rising Star', desc: 'Reached Level 5' },
   week_warrior: { emoji: '🔥', label: 'Week Warrior', desc: '7-day habit streak' },
@@ -84,35 +84,23 @@ function getEarnedBadgeIds_() {
  */
 function awardBadge_(id) {
   if (!BADGE_META_[id]) return;
-  let awarded = false;
-  let lock = null;
-  try {
-    lock = LockService.getDocumentLock();
-    lock.tryLock(2000);
-  } catch (e) {
-    lock = null;
-  }
-  try {
-    const ids = getEarnedBadgeIds_();
-    if (ids.indexOf(id) === -1) {
-      ids.push(id);
-      PropertiesService.getDocumentProperties().setProperty(
-        CONFIG.XP.BADGES_PROP,
-        JSON.stringify(ids)
-      );
-      awarded = true;
-    }
-  } catch (e) {
-    Logger.log('awardBadge_ failed: ' + (e && e.message ? e.message : e));
-  } finally {
-    if (lock) {
-      try {
-        lock.releaseLock();
-      } catch (e) {
-        // ignore
+  const awarded = tryWithLock_(function () {
+    try {
+      const ids = getEarnedBadgeIds_();
+      if (ids.indexOf(id) === -1) {
+        ids.push(id);
+        PropertiesService.getDocumentProperties().setProperty(
+          CONFIG.XP.BADGES_PROP,
+          JSON.stringify(ids)
+        );
+        return true;
       }
+      return false;
+    } catch (e) {
+      Logger.log('awardBadge_ failed: ' + (e && e.message ? e.message : e));
+      return false;
     }
-  }
+  });
   if (awarded) {
     const m = BADGE_META_[id];
     toast_('🏅 Badge unlocked: ' + m.emoji + ' ' + m.label, 'Weekly Plan', 'success');
@@ -131,31 +119,21 @@ function awardXp_(points) {
   let newXp = 0;
   let newLevel = 1;
 
-  let lock = null;
-  try {
-    lock = LockService.getDocumentLock();
-    lock.tryLock(3000);
-  } catch (e) {
-    lock = null;
-  }
-  try {
-    const s = getXpState_();
-    oldLevel = s.level || 1;
-    newXp = (s.xp || 0) + points;
-    newLevel = levelForXp_(newXp, CONFIG.XP.BASE, CONFIG.XP.STEP).level;
-    saveXpState_({ xp: newXp, level: newLevel });
-  } catch (e) {
-    Logger.log('awardXp_ failed: ' + (e && e.message ? e.message : e));
-    return;
-  } finally {
-    if (lock) {
-      try {
-        lock.releaseLock();
-      } catch (e) {
-        // ignore
-      }
+  const result = tryWithLock_(function () {
+    try {
+      const s = getXpState_();
+      oldLevel = s.level || 1;
+      newXp = (s.xp || 0) + points;
+      newLevel = levelForXp_(newXp, CONFIG.XP.BASE, CONFIG.XP.STEP).level;
+      saveXpState_({ xp: newXp, level: newLevel });
+      return true;
+    } catch (e) {
+      Logger.log('awardXp_ failed: ' + (e && e.message ? e.message : e));
+      return false;
     }
-  }
+  });
+
+  if (!result) return;
 
   if (newLevel > oldLevel) {
     toast_('⬆️ Level up! You reached Level ' + newLevel + '.', 'Weekly Plan', 'success');
@@ -170,28 +148,15 @@ function awardXp_(points) {
  */
 function recordQuestCompletion_() {
   let count = 0;
-  let lock = null;
-  try {
-    lock = LockService.getDocumentLock();
-    lock.tryLock(2000);
-  } catch (e) {
-    lock = null;
-  }
-  try {
-    const props = PropertiesService.getDocumentProperties();
-    count = (parseInt(props.getProperty(CONFIG.XP.QUEST_COUNT_PROP), 10) || 0) + 1;
-    props.setProperty(CONFIG.XP.QUEST_COUNT_PROP, String(count));
-  } catch (e) {
-    Logger.log('recordQuestCompletion_ failed: ' + (e && e.message ? e.message : e));
-  } finally {
-    if (lock) {
-      try {
-        lock.releaseLock();
-      } catch (e) {
-        // ignore
-      }
+  tryWithLock_(function () {
+    try {
+      const props = PropertiesService.getDocumentProperties();
+      count = (parseInt(props.getProperty(CONFIG.XP.QUEST_COUNT_PROP), 10) || 0) + 1;
+      props.setProperty(CONFIG.XP.QUEST_COUNT_PROP, String(count));
+    } catch (e) {
+      Logger.log('recordQuestCompletion_ failed: ' + (e && e.message ? e.message : e));
     }
-  }
+  });
   if (count >= CONFIG.XP.QUEST_MASTER_COUNT) awardBadge_('quest_master');
 }
 

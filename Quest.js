@@ -232,37 +232,25 @@ function questTaskMultiplier_(taskName) {
  */
 function markQuestDone_(which, name) {
   if (!name) return;
-  let lock = null;
-  try {
-    lock = LockService.getDocumentLock();
-    lock.tryLock(2000);
-  } catch (e) {
-    lock = null;
-  }
-  let flipped = false;
-  try {
-    const q = getDailyQuest_();
-    if (!q) return;
-    if (which === 'habit' && q.habitName === String(name) && !q.habitDone) {
-      q.habitDone = true;
-      saveDailyQuest_(q);
-      flipped = true;
-    } else if (which === 'task' && q.taskName === String(name) && !q.taskDone) {
-      q.taskDone = true;
-      saveDailyQuest_(q);
-      flipped = true;
-    }
-  } catch (e) {
-    Logger.log('markQuestDone_ failed: ' + (e && e.message ? e.message : e));
-  } finally {
-    if (lock) {
-      try {
-        lock.releaseLock();
-      } catch (e) {
-        // ignore
+  const flipped = tryWithLock_(function () {
+    try {
+      const q = getDailyQuest_();
+      if (!q) return false;
+      if (which === 'habit' && q.habitName === String(name) && !q.habitDone) {
+        q.habitDone = true;
+        saveDailyQuest_(q);
+        return true;
+      } else if (which === 'task' && q.taskName === String(name) && !q.taskDone) {
+        q.taskDone = true;
+        saveDailyQuest_(q);
+        return true;
       }
+      return false;
+    } catch (e) {
+      Logger.log('markQuestDone_ failed: ' + (e && e.message ? e.message : e));
+      return false;
     }
-  }
+  });
   // Count toward the Quest Master badge + weekly boss (after our lock).
   if (flipped) {
     recordQuestCompletion_();
@@ -357,40 +345,59 @@ function comboMultiplierForToday_() {
 }
 
 /**
- * Commit today's combo (idempotent per day). Call AFTER releasing the
- * caller's document lock (this takes its own lock).
+ * Atomically read the current combo multiplier AND advance the streak.
+ * Caller MUST hold the document lock. Returns the combo state AFTER the
+ * advance so the caller can surface it in toasts/sidebar.
+ *
+ * This is the lock-free variant — used by processWeeklyScoreChange and
+ * recordHabitDone, which already hold the document lock. It avoids the
+ * race where the multiplier read in comboMultiplierForToday_ and the
+ * write in advanceComboForToday_ could be interleaved with another
+ * concurrent score/habit handler.
+ *
+ * @returns {{days:number, multiplier:number}}
+ */
+function applyComboLocked_() {
+  const C = CONFIG.COMBO;
+  const s = getQuestCombo_();
+  const today = formatDateYYYYMMDD(new Date());
+  let combo;
+  if (s.lastDate === today) {
+    combo = s.combo; // already counted today
+  } else if (s.lastDate === questYesterday_()) {
+    combo = s.combo + 1; // continues from yesterday
+  } else {
+    combo = 1; // gap or first — start fresh
+  }
+  saveQuestCombo_({ combo: combo, lastDate: today });
+  return {
+    days: combo,
+    multiplier: comboMultiplier_(combo, C.BASE, C.STEP, C.CAP_DAYS),
+  };
+}
+
+/**
+ * Commit today's combo (idempotent per day). Safe to call from contexts
+ * that don't already hold the document lock — acquires its own lock via
+ * tryWithLock_.
  * @returns {number} the combo day-count after advancing
  */
 function advanceComboForToday_() {
-  let result = 0;
-  let lock = null;
-  try {
-    lock = LockService.getDocumentLock();
-    lock.tryLock(2000);
-  } catch (e) {
-    lock = null;
-  }
-  try {
-    const s = getQuestCombo_();
-    const today = formatDateYYYYMMDD(new Date());
-    let combo;
-    if (s.lastDate === today) combo = s.combo; // already counted today
-    else if (s.lastDate === questYesterday_()) combo = s.combo + 1;
-    else combo = 1;
-    saveQuestCombo_({ combo: combo, lastDate: today });
-    result = combo;
-  } catch (e) {
-    Logger.log('advanceComboForToday_ failed: ' + (e && e.message ? e.message : e));
-  } finally {
-    if (lock) {
-      try {
-        lock.releaseLock();
-      } catch (e) {
-        // ignore
-      }
+  return tryWithLock_(function () {
+    try {
+      const s = getQuestCombo_();
+      const today = formatDateYYYYMMDD(new Date());
+      let combo;
+      if (s.lastDate === today) combo = s.combo; // already counted today
+      else if (s.lastDate === questYesterday_()) combo = s.combo + 1;
+      else combo = 1;
+      saveQuestCombo_({ combo: combo, lastDate: today });
+      return combo;
+    } catch (e) {
+      Logger.log('advanceComboForToday_ failed: ' + (e && e.message ? e.message : e));
+      return 0;
     }
-  }
-  return result;
+  }) || 0;
 }
 
 /**
