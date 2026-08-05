@@ -197,7 +197,7 @@ function recordHabitDone(row) {
   let finished = false;
   try {
     withLock_(function () {
-      const baseScore = parseFloat(sheet.getRange(H.COLUMNS.BASE_SCORE + row).getValue()) || 1;
+      const weight = parseFloat(sheet.getRange(H.COLUMNS.WEIGHT + row).getValue()) || 1;
       const dayStartCol = columnLetterToIndex(H.COLUMNS.DAY_START) + 1;
       const dayValues = sheet.getRange(row, dayStartCol, 1, H.DAYS_COUNT).getValues()[0];
       const totalCell = sheet.getRange(H.COLUMNS.TOTAL_COUNT + row);
@@ -208,7 +208,7 @@ function recordHabitDone(row) {
         else break;
       }
 
-      weightedScore = baseScore * Math.pow(H.STREAK_MULTIPLIER, streak);
+      weightedScore = weight * Math.pow(H.STREAK_MULTIPLIER, streak);
       const qHabitMult = questHabitMultiplier_(habitName); // Daily Quest bonus
       if (qHabitMult > 1) {
         // Atomically read AND advance the combo inside this lock
@@ -260,7 +260,7 @@ function recordHabitDone(row) {
 }
 
 /**
- * Sort habit rows by base score (column C) descending.
+ * Sort habit rows by weight (column C) descending.
  * @returns {string} status message
  */
 function sortHabits() {
@@ -273,12 +273,12 @@ function sortHabits() {
   const lastRow = getLastHabitRow_();
   if (lastRow < H.DATA_START_ROW) return 'No habits to sort.';
 
-  const baseScoreCol = columnLetterToIndex(H.COLUMNS.BASE_SCORE) + 1; // C -> 3
+  const weightCol = columnLetterToIndex(H.COLUMNS.WEIGHT) + 1; // C -> 3
   const lastCol = columnLetterToIndex(H.COLUMNS.TOTAL_COUNT) + 1; // R
   sheet
     .getRange(H.DATA_START_ROW, 1, lastRow - H.DATA_START_ROW + 1, lastCol)
-    .sort({ column: baseScoreCol, ascending: false });
+    .sort({ column: weightCol, ascending: false });
 
-  toast_('Habits sorted by score.', 'Weekly Plan');
-  return 'Habits sorted by score.';
+  toast_('Habits sorted by weight.', 'Weekly Plan');
+  return 'Habits sorted by weight.';
 }

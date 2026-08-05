@@ -199,7 +199,7 @@ function readHabits_(todayDate) {
 
     habits.push({
       name: name,
-      base_score: parseFloat(scores[i]) || 0,
+      weight: parseFloat(scores[i]) || 0,
       streak_days: streakDays,
       done_today: doneToday
     });

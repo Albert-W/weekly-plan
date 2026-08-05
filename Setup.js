@@ -18,9 +18,12 @@
  * @returns {string} human-readable summary
  */
 function setUpSheets() {
-  setUpTasksSheet_(); // before Weekly so task dropdowns can reference it
-  setUpWeeklySheet_();
+  // Tasks and Habits must be built before Weekly so the combined
+  // task+habit dropdown list (hidden _Dropdown sheet) is complete
+  // when applyTaskValidation_ wires up the cell dropdowns.
+  setUpTasksSheet_();
   setUpHabitsSheet_();
+  setUpWeeklySheet_();
   setUpSummarySheet_();
   setUpArchiveSheet_();
   toast_('Sheets are set up and ready.', 'Weekly Plan');
@@ -92,17 +95,97 @@ function setUpWeeklySheet_() {
 }
 
 /**
- * Add a dropdown to every task cell, sourced from the Tasks sheet's
- * name column, so tasks are picked rather than typed. Invalid values
- * are allowed so Random Pick fills and the auto-created "others" task
- * aren't flagged, and the list auto-updates as tasks are added/removed.
+ * Refresh the hidden _Dropdown sheet with a combined list of task names
+ * and habit names, so the Weekly task-cell dropdowns offer both.
+ * Sorted by weight descending (task weight = col B, habit weight = col C),
+ * then alphabetically for ties.  Idempotent: safe to call from setup,
+ * task CRUD, and habit refresh.
+ */
+function refreshDropdownList_() {
+  const hiddenSheet = getOrCreateSheet_(CONFIG.HIDDEN_SHEET);
+  hiddenSheet.hideSheet();
+
+  var entries = []; // { name:string, weight:number }
+
+  // --- Tasks ---
+  // Read name (col A) + weight (col B) in one batch.
+  var tasksSheet = getSheetByName_(CONFIG.TASKS_SHEET);
+  if (tasksSheet) {
+    var lastRow = getLastTaskRow_();
+    if (lastRow >= CONFIG.TASKS.DATA_START_ROW) {
+      var taskRows = lastRow - CONFIG.TASKS.DATA_START_ROW + 1;
+      var taskData = tasksSheet
+        .getRange(CONFIG.TASKS.DATA_START_ROW, 1, taskRows, 2)
+        .getValues();
+      for (var i = 0; i < taskData.length; i++) {
+        var name = taskData[i][0];
+        if (name) {
+          entries.push({
+            name: String(name).trim(),
+            weight: parseFloat(taskData[i][1]) || 0,
+          });
+        }
+      }
+    }
+  }
+
+  // --- Habits ---
+  // Read name (col A) + weight (col C) in one batch.  Column B is the
+  // "done" checkbox — we skip it but have to read through it because the
+  // columns are contiguous.
+  var habitsSheet = getSheetByName_(CONFIG.HABITS_SHEET);
+  if (habitsSheet) {
+    var lastRow = getLastHabitRow_();
+    var H = CONFIG.HABITS;
+    if (lastRow >= H.DATA_START_ROW) {
+      var habitRows = lastRow - H.DATA_START_ROW + 1;
+      var nameColIdx = columnLetterToIndex(H.COLUMNS.HABIT_NAME) + 1; // A -> 1
+      // Read from name column through base-score column (col A..C).
+      var habitData = habitsSheet
+        .getRange(H.DATA_START_ROW, nameColIdx, habitRows, 3)
+        .getValues();
+      for (var i = 0; i < habitData.length; i++) {
+        var name = habitData[i][0];
+        if (name) {
+          entries.push({
+            name: String(name).trim(),
+            weight: parseFloat(habitData[i][2]) || 0, // col C = index 2 in a 3-col read
+          });
+        }
+      }
+    }
+  }
+
+  // Sort: weight descending, then alphabetically for ties.
+  entries.sort(function (a, b) {
+    if (b.weight !== a.weight) return b.weight - a.weight;
+    return a.name.localeCompare(b.name);
+  });
+
+  // Write just the names to the hidden sheet.
+  hiddenSheet.clearContents();
+  if (entries.length > 0) {
+    var names = entries.map(function (e) { return [e.name]; });
+    hiddenSheet.getRange(1, 1, names.length, 1).setValues(names);
+  }
+}
+
+/**
+ * Add a dropdown to every task cell, sourced from the hidden _Dropdown
+ * sheet that combines task + habit names so both can be picked for a
+ * time block. Invalid values are allowed so Random Pick fills and the
+ * auto-created "others" task aren't flagged.
  * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet Weekly sheet
  */
 function applyTaskValidation_(sheet) {
   const W = CONFIG.WEEKLY;
-  const tasksSheet = getOrCreateSheet_(CONFIG.TASKS_SHEET);
-  const start = CONFIG.TASKS.DATA_START_ROW;
-  const namesRange = tasksSheet.getRange(start, 1, tasksSheet.getMaxRows() - start + 1, 1);
+
+  // Ensure the combined list is fresh before we wire up the dropdown.
+  refreshDropdownList_();
+
+  const hiddenSheet = getOrCreateSheet_(CONFIG.HIDDEN_SHEET);
+  // Include all possible rows so new entries auto-appear in the dropdown.
+  const namesRange = hiddenSheet.getRange(1, 1, hiddenSheet.getMaxRows(), 1);
 
   const rule = SpreadsheetApp.newDataValidation()
     .requireValueInRange(namesRange, true)
@@ -250,7 +333,7 @@ function setUpHabitsSheet_() {
   // refreshHabitsDatesCore_ to the "yyyy mm" window label, so we don't
   // write a "Done?" label there.
   sheet.getRange(H.COLUMNS.HABIT_NAME + H.HEADER_ROW).setValue('Habit').setFontWeight('bold');
-  sheet.getRange(H.COLUMNS.BASE_SCORE + H.HEADER_ROW).setValue('Base').setFontWeight('bold');
+  sheet.getRange(H.COLUMNS.WEIGHT + H.HEADER_ROW).setValue('Weight').setFontWeight('bold');
   sheet.getRange(H.COLUMNS.TOTAL_COUNT + H.HEADER_ROW).setValue('Total').setFontWeight('bold');
 
   // Seed a few sample habits on first run only (don't clobber data).
@@ -264,7 +347,7 @@ function setUpHabitsSheet_() {
     for (let i = 0; i < samples.length; i++) {
       const row = H.DATA_START_ROW + i;
       sheet.getRange(H.COLUMNS.HABIT_NAME + row).setValue(samples[i][0]);
-      sheet.getRange(H.COLUMNS.BASE_SCORE + row).setValue(samples[i][1]);
+      sheet.getRange(H.COLUMNS.WEIGHT + row).setValue(samples[i][1]);
     }
   }
 

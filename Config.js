@@ -37,6 +37,7 @@ const CONFIG = {
   TASKS_SHEET: 'Tasks',
   SUMMARY_SHEET: 'Summary',
   ARCHIVE_SHEET: 'Archive', // GAS-only: in-spreadsheet history of finished weeks
+  HIDDEN_SHEET: '_Dropdown', // Hidden helper: combined task+habit names for Weekly dropdowns
 
   // ==================== HABITS CONFIG ====================
   HABITS: {
@@ -45,7 +46,7 @@ const CONFIG = {
     COLUMNS: {
       HABIT_NAME: 'A',
       DONE_CHECKBOX: 'B', // GAS-only: native checkbox column ("mark done")
-      BASE_SCORE: 'C',
+      WEIGHT: 'C',
       DAY_START: 'D',
       DAY_END: 'Q',
       TOTAL_COUNT: 'R',

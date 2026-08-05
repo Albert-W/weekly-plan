@@ -306,59 +306,97 @@ function processWeeklyScoreChange(row, col, newScore) {
       const dailyTotalCell = weeklySheet.getRange(W.SCORE_ROW, col);
       const currentDailyTotal = parseFloat(dailyTotalCell.getValue()) || 0;
 
-      // Resolve the task in the Tasks sheet (name, weight, count, score).
-      const startRow = CONFIG.TASKS.DATA_START_ROW;
-      let names = [];
-      let weights = [];
-      let counts = [];
-      let scores = [];
-      if (lastTaskRow >= startRow) {
-        names = tasksSheet.getRange('A' + startRow + ':A' + lastTaskRow).getValues();
-        weights = tasksSheet.getRange('B' + startRow + ':B' + lastTaskRow).getValues();
-        counts = tasksSheet.getRange('F' + startRow + ':F' + lastTaskRow).getValues();
-        scores = tasksSheet.getRange('G' + startRow + ':G' + lastTaskRow).getValues();
-      }
-
+      // ------------------------------------------------------------------
+      // Resolve the weight for this task / habit name.
+      // 1) Habits sheet → weight = weight column (col C)
+      // 2) Tasks sheet   → weight = task weight (col B)
+      // 3) Fallback      → "others" row or auto-create (weight = 1)
+      // ------------------------------------------------------------------
+      let taskWeight = 1;
+      let isHabit = false;
+      let habitRow = -1;
       let taskRow = -1;
-      let othersRow = -1;
-      for (let i = 0; i < names.length; i++) {
-        const name = names[i][0];
-        if (name === taskName) {
-          taskRow = i + startRow;
-          break;
-        }
-        if (name === CONFIG.TASKS.FALLBACK_NAME) othersRow = i + startRow;
-      }
-
       let isNewTask = false;
-      let lookupIndex;
-      if (taskRow !== -1) {
-        lookupIndex = taskRow - startRow;
-      } else if (othersRow !== -1) {
-        taskRow = othersRow;
-        lookupIndex = othersRow - startRow;
-      } else {
-        taskRow = lastTaskRow + 1;
-        lookupIndex = -1;
-        isNewTask = true;
+      let currentCount = 0;
+      let currentTaskScore = 0;
+
+      // -- 1) Habits lookup --
+      const habitsSheet = getSheetByName_(CONFIG.HABITS_SHEET);
+      if (habitsSheet) {
+        const lastHabitRow = getLastHabitRow_();
+        const H = CONFIG.HABITS;
+        if (lastHabitRow >= H.DATA_START_ROW) {
+          const nameCol = columnLetterToIndex(H.COLUMNS.HABIT_NAME) + 1; // A → 1
+          const habitData = habitsSheet
+            .getRange(H.DATA_START_ROW, nameCol, lastHabitRow - H.DATA_START_ROW + 1, 3)
+            .getValues();
+          for (let i = 0; i < habitData.length; i++) {
+            if (String(habitData[i][0]).trim() === taskName) {
+              taskWeight = parseFloat(habitData[i][2]) || 1; // col C = index 2
+              isHabit = true;
+              habitRow = H.DATA_START_ROW + i;
+              break;
+            }
+          }
+        }
       }
 
-      const taskWeight = isNewTask ? 1 : parseFloat(weights[lookupIndex][0]) || 1;
-      const currentCount = isNewTask ? 0 : parseInt(counts[lookupIndex][0], 10) || 0;
-      const currentTaskScore = isNewTask ? 0 : parseFloat(scores[lookupIndex][0]) || 0;
+      if (!isHabit) {
+        // -- 2) Tasks lookup (existing logic) --
+        const startRow = CONFIG.TASKS.DATA_START_ROW;
+        let names = [];
+        let weights = [];
+        let counts = [];
+        let scores = [];
+        if (lastTaskRow >= startRow) {
+          names = tasksSheet.getRange('A' + startRow + ':A' + lastTaskRow).getValues();
+          weights = tasksSheet.getRange('B' + startRow + ':B' + lastTaskRow).getValues();
+          counts = tasksSheet.getRange('F' + startRow + ':F' + lastTaskRow).getValues();
+          scores = tasksSheet.getRange('G' + startRow + ':G' + lastTaskRow).getValues();
+        }
+
+        let othersRow = -1;
+        for (let i = 0; i < names.length; i++) {
+          const nm = names[i][0];
+          if (nm === taskName) {
+            taskRow = i + startRow;
+            break;
+          }
+          if (nm === CONFIG.TASKS.FALLBACK_NAME) othersRow = i + startRow;
+        }
+
+        let lookupIndex;
+        if (taskRow !== -1) {
+          lookupIndex = taskRow - startRow;
+        } else if (othersRow !== -1) {
+          taskRow = othersRow;
+          lookupIndex = othersRow - startRow;
+        } else {
+          taskRow = lastTaskRow + 1;
+          lookupIndex = -1;
+          isNewTask = true;
+        }
+
+        taskWeight = isNewTask ? 1 : parseFloat(weights[lookupIndex][0]) || 1;
+        currentCount = isNewTask ? 0 : parseInt(counts[lookupIndex][0], 10) || 0;
+        currentTaskScore = isNewTask ? 0 : parseFloat(scores[lookupIndex][0]) || 0;
+      }
 
       weightedScore = taskWeight * newScore;
       if (weightedScore > 0) {
-        const qTaskMult = questTaskMultiplier_(taskName); // Daily Quest bonus
-        if (qTaskMult > 1) {
+        // Daily Quest bonus — use the right lookup for habits vs tasks.
+        const qMult = isHabit
+          ? questHabitMultiplier_(taskName)
+          : questTaskMultiplier_(taskName);
+        if (qMult > 1) {
           // Atomically read AND advance the combo inside this lock
           // so the multiplier matches the state we persist.
           const combo = applyComboLocked_();
           comboDays = combo.days;
-          weightedScore *= qTaskMult * combo.multiplier;
+          weightedScore *= qMult * combo.multiplier;
           isQuestTask = true;
         } else {
-          weightedScore *= qTaskMult;
+          weightedScore *= qMult;
         }
       }
       newDailyTotal = currentDailyTotal + weightedScore;
@@ -378,17 +416,20 @@ function processWeeklyScoreChange(row, col, newScore) {
       weeklySheet.getRange(row, col).setValue(newScore);
       dailyTotalCell.setValue(newDailyTotal);
 
-      if (isNewTask) {
-        tasksSheet.getRange('A' + taskRow).setValue(CONFIG.TASKS.FALLBACK_NAME);
-        tasksSheet.getRange('B' + taskRow).setValue(1);
-        tasksSheet.getRange('C' + taskRow).setValue(now);
-        tasksSheet.getRange('D' + taskRow).setValue(now);
-        tasksSheet.getRange('F' + taskRow).setValue(1);
-        tasksSheet.getRange('G' + taskRow).setValue(weightedScore);
-      } else {
-        tasksSheet.getRange('D' + taskRow).setValue(now);
-        tasksSheet.getRange('F' + taskRow).setValue(currentCount + 1);
-        tasksSheet.getRange('G' + taskRow).setValue(currentTaskScore + weightedScore);
+      // Habits don't have rows in the Tasks sheet — skip the stats update.
+      if (!isHabit) {
+        if (isNewTask) {
+          tasksSheet.getRange('A' + taskRow).setValue(CONFIG.TASKS.FALLBACK_NAME);
+          tasksSheet.getRange('B' + taskRow).setValue(1);
+          tasksSheet.getRange('C' + taskRow).setValue(now);
+          tasksSheet.getRange('D' + taskRow).setValue(now);
+          tasksSheet.getRange('F' + taskRow).setValue(1);
+          tasksSheet.getRange('G' + taskRow).setValue(weightedScore);
+        } else {
+          tasksSheet.getRange('D' + taskRow).setValue(now);
+          tasksSheet.getRange('F' + taskRow).setValue(currentCount + 1);
+          tasksSheet.getRange('G' + taskRow).setValue(currentTaskScore + weightedScore);
+        }
       }
       finished = true;
     });
@@ -402,6 +443,25 @@ function processWeeklyScoreChange(row, col, newScore) {
   // Flush AFTER releasing the lock so we don't hold it during I/O.
   SpreadsheetApp.flush();
 
+  // If a habit was scored positively, mark it done in the Habits sheet
+  // (mirrors the checkbox path without double-counting summary/XP/boss).
+  if (isHabit && weightedScore > 0 && habitRow > 0) {
+    const hSheet = getSheetByName_(CONFIG.HABITS_SHEET);
+    if (hSheet) {
+      const dayIdx = findHabitsDayIndex(hSheet);
+      if (dayIdx >= 0) {
+        const H = CONFIG.HABITS;
+        const dayCol = columnLetterToIndex(H.COLUMNS.DAY_START) + 1 + dayIdx;
+        const curVal = parseInt(hSheet.getRange(habitRow, dayCol).getValue(), 10) || 0;
+        hSheet.getRange(habitRow, dayCol).setValue(curVal + 1);
+        const totalCell = hSheet.getRange(H.COLUMNS.TOTAL_COUNT + habitRow);
+        const curTotal = parseInt(totalCell.getValue(), 10) || 0;
+        totalCell.setValue(curTotal + 1);
+        hSheet.getRange(H.COLUMNS.HABIT_NAME + habitRow).setBackground(CONFIG.COLORS.POSITIVE);
+      }
+    }
+  }
+
   // Summary update owns its own lock — call after releasing ours.
   updateSummary(weightedScore > 0 ? weightedScore : 0, weightedScore < 0 ? weightedScore : 0);
 
@@ -414,7 +474,7 @@ function processWeeklyScoreChange(row, col, newScore) {
   // Mark quest done (acquires its own lock via tryWithLock_).
   let comboNote = '';
   if (isQuestTask) {
-    markQuestDone_('task', taskName);
+    markQuestDone_(isHabit ? 'habit' : 'task', taskName);
     if (comboDays > 1) comboNote = ' 🔥' + comboDays + 'd combo';
   }
 
@@ -486,6 +546,27 @@ function recalculateWeek() {
       const wts = tasksSheet.getRange(start, 2, lastTaskRow - start + 1, 1).getValues();
       for (let i = 0; i < names.length; i++) {
         if (names[i][0]) weightByName[names[i][0]] = parseFloat(wts[i][0]) || 1;
+      }
+    }
+  }
+
+  // Also add habits (name → weight, col C).  Habit weights are only
+  // added when there is no task with the same name, so task weights take
+  // precedence if a name exists in both sheets.
+  const habitsSheet = getSheetByName_(CONFIG.HABITS_SHEET);
+  if (habitsSheet) {
+    const lastHabitRow = getLastHabitRow_();
+    const H = CONFIG.HABITS;
+    if (lastHabitRow >= H.DATA_START_ROW) {
+      const nameCol = columnLetterToIndex(H.COLUMNS.HABIT_NAME) + 1;
+      const habitData = habitsSheet
+        .getRange(H.DATA_START_ROW, nameCol, lastHabitRow - H.DATA_START_ROW + 1, 3)
+        .getValues();
+      for (let i = 0; i < habitData.length; i++) {
+        const hName = String(habitData[i][0]).trim();
+        if (hName && weightByName[hName] === undefined) {
+          weightByName[hName] = parseFloat(habitData[i][2]) || 1;
+        }
       }
     }
   }

@@ -40,6 +40,9 @@ function createTask(name, weight) {
   sheet.getRange('B' + newRow).setValue(numericWeight);
   sheet.getRange('C' + newRow).setValue(formatDateTime(new Date()));
 
+  // Keep the Weekly task-cell dropdowns in sync (now includes habits too).
+  refreshDropdownList_();
+
   return { row: newRow, name: trimmedName, weight: numericWeight };
 }
 
@@ -63,6 +66,7 @@ function deleteTask(name) {
   for (let i = 0; i < names.length; i++) {
     if (String(names[i][0]).trim() === trimmed) {
       sheet.deleteRow(start + i);
+      refreshDropdownList_();
       return true;
     }
   }
