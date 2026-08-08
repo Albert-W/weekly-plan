@@ -344,3 +344,87 @@ function tryWithLock_(fn, timeoutMs) {
     lock.releaseLock();
   }
 }
+
+// ----------------------------------------------------------------------
+// Hyperlink copying
+// ----------------------------------------------------------------------
+
+/**
+ * When a user picks a task/habit name from the Weekly dropdown, the plain
+ * text lands in the cell but any hyperlink from the source sheet is lost.
+ * This function looks up the name in the Habits sheet (and then the Tasks
+ * sheet) and, if the source cell has a hyperlink, copies it onto the
+ * target range so the Weekly cell becomes clickable too.
+ *
+ * Supports both Insert → Link (rich-text link) and =HYPERLINK() formulas.
+ *
+ * @param {GoogleAppsScript.Spreadsheet.Range} targetRange  Weekly task cell
+ */
+function copyLinkToWeeklyCell_(targetRange) {
+  var taskName = String(targetRange.getValue() || '').trim();
+  if (!taskName) return;
+
+  // -- Habits sheet --
+  var habitsSheet = getSheetByName_(CONFIG.HABITS_SHEET);
+  if (habitsSheet) {
+    var lastRow = getLastHabitRow_();
+    var H = CONFIG.HABITS;
+    if (lastRow >= H.DATA_START_ROW) {
+      var nameCol = columnLetterToIndex(H.COLUMNS.HABIT_NAME) + 1; // A -> 1
+      var habitNames = habitsSheet
+        .getRange(H.DATA_START_ROW, nameCol, lastRow - H.DATA_START_ROW + 1, 1)
+        .getValues();
+      for (var i = 0; i < habitNames.length; i++) {
+        if (String(habitNames[i][0]).trim() === taskName) {
+          var src = habitsSheet.getRange(H.DATA_START_ROW + i, nameCol);
+          _applyLinkFromSource_(src, targetRange, taskName);
+          return;
+        }
+      }
+    }
+  }
+
+  // -- Tasks sheet --
+  var tasksSheet = getSheetByName_(CONFIG.TASKS_SHEET);
+  if (tasksSheet) {
+    var lastTaskRow = getLastTaskRow_();
+    if (lastTaskRow >= CONFIG.TASKS.DATA_START_ROW) {
+      var taskNames = tasksSheet
+        .getRange(CONFIG.TASKS.DATA_START_ROW, 1, lastTaskRow - CONFIG.TASKS.DATA_START_ROW + 1, 1)
+        .getValues();
+      for (var j = 0; j < taskNames.length; j++) {
+        if (String(taskNames[j][0]).trim() === taskName) {
+          var src = tasksSheet.getRange(CONFIG.TASKS.DATA_START_ROW + j, 1);
+          _applyLinkFromSource_(src, targetRange, taskName);
+          return;
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Copy a hyperlink from a source cell to a target range.
+ * Handles =HYPERLINK() formulas and Insert → Link rich-text links.
+ * @param {GoogleAppsScript.Spreadsheet.Range} src
+ * @param {GoogleAppsScript.Spreadsheet.Range} tgt
+ * @param {string} fallbackText
+ */
+function _applyLinkFromSource_(src, tgt, fallbackText) {
+  // 1) =HYPERLINK(url, label) formula
+  var formula = src.getFormula();
+  if (formula) {
+    tgt.setFormula(formula);
+    return;
+  }
+
+  // 2) Insert → Link (rich-text link)
+  var rtv = src.getRichTextValue();
+  var url = rtv && rtv.getLinkUrl();
+  if (url) {
+    var builder = SpreadsheetApp.newRichTextValue()
+      .setText(fallbackText)
+      .setLinkUrl(url);
+    tgt.setRichTextValue(builder.build());
+  }
+}

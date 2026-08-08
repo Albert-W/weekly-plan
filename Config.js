@@ -20,6 +20,11 @@
 //   weeklyBoss          calSyncCells        storyAngles
 //   lastMealStory       lastTelegramDate    lastEmailDate
 //   habitsColorResetDate  lastInitDate
+//
+// The diary feature (Diary.js) deliberately does NOT use DocumentProperties:
+// its onFormSubmit trigger fires in a Form (cross-document) context where
+// DocumentProperties can resolve to the wrong document. Diary state lives in
+// Script Properties instead — see CONFIG.DIARY.*_PROP keys.
 // ============================================================================
 
 // ============================================================================
@@ -36,6 +41,7 @@ const CONFIG = {
   WEEKLY_SHEET: 'Weekly',
   TASKS_SHEET: 'Tasks',
   SUMMARY_SHEET: 'Summary',
+  DIARY_SHEET: 'Diary',
   ARCHIVE_SHEET: 'Archive', // GAS-only: in-spreadsheet history of finished weeks
   HIDDEN_SHEET: '_Dropdown', // Hidden helper: combined task+habit names for Weekly dropdowns
 
@@ -165,6 +171,47 @@ const CONFIG = {
     SEND_HOUR: 8,
     // DocumentProperties key tracking the last date we sent (no dupes).
     LAST_SENT_PROP: 'lastTelegramDate',
+  },
+
+  // ==================== DAILY DIARY CONFIG ====================
+  // Evening (~22:30) Telegram reminder links a prefilled Google Form; the
+  // onFormSubmit trigger upserts a row in the Diary sheet, and the habit
+  // check ("写日记") is deferred to a spreadsheet-context run
+  // (processPendingDiaryHabits_) so XP/quest/boss state never resolves to
+  // the Form's document. Diary persistent state lives in SCRIPT Properties
+  // (see the registry note at the top), because the form trigger fires in a
+  // cross-document context where DocumentProperties is unreliable.
+  DIARY: {
+    // Master on/off switch for the diary reminder + submit handling.
+    ENABLED: true,
+    // Reminder hour/min. Apps Script can't hit 22:30 exactly —
+    // atHour(22).nearMinute(30) fires in the 22:15–22:45 window.
+    SEND_HOUR: 22,
+    SEND_MINUTE: 30,
+    // Habit row seeded by Setup so submitting the form = marking this habit.
+    HABIT_NAME: '写日记',
+    HABIT_WEIGHT: 1,
+    // Mood select options; index+1 → stored mood 1–5.
+    MOOD_EMOJI: ['😄', '🙂', '😐', '😔', '😫'],
+    // Script Properties keys (bare camelCase — see registry note).
+    FORM_ID_PROP: 'diaryFormId',
+    LAST_SENT_PROP: 'diaryLastSent',           // YYYYMMDD of last reminder
+    HABIT_LAST_DATE_PROP: 'diaryHabitLastDate',// YYYYMMDD of last habit-marked diary date
+    // Diary sheet layout: header in row 1, one diary row per date.
+    DATA_START_ROW: 2,
+    COLS: {
+      DATE: 'A', MOOD: 'B', WORRY: 'C', HIGHLIGHT: 'D',
+      TOMORROW_PLAN: 'E', SUBMITTED_AT: 'F', UPDATED_AT: 'G',
+    },
+    // Weekly top band (rows 1 & 3 are free; row 2 = control buttons, row 4 =
+    // day headers). Never insert rows above the grid — row indices are
+    // hardcoded in Weekly.js. Increase row height / use wrap instead.
+    BAND_WORRY_RANGE: 'C1:P1',
+    BAND_PLAN_RANGE: 'C3:P3',
+    BAND_ROW_HEIGHT: 42,
+    // Submissions in these local hours fall back to the previous day only
+    // when the form's Date item is missing.
+    LATE_NIGHT_MAX_HOUR: 4,
   },
 
   // ==================== GEMINI (LLM) CONFIG ====================

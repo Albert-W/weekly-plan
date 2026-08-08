@@ -41,6 +41,8 @@ function onOpen() {
     .addItem('Send meal story now', 'sendMealStoryNowFromUI')
     .addItem('Set up Telegram…', 'setUpTelegram')
     .addItem('Set up Gemini…', 'setUpGemini')
+    .addItem('Set up Diary…', 'setUpDiary')
+    .addItem('Send diary reminder now', 'sendDiaryReminderFromUI')
     .addItem('Email summary now', 'sendSummaryEmailNowFromUI')
     .addItem('Start new week…', 'startNewWeekWithConfirm_')
     .addToUi();
@@ -92,6 +94,16 @@ function handleEdit(e) {
         }
         const score = parseFloat(e.range.getValue());
         if (!isNaN(score)) processWeeklyScoreChange(row, col, score);
+      }
+
+      // Task cell edited — if the name matches a habit/task that has a
+      // hyperlink, copy the link so the Weekly cell is also clickable.
+      if (
+        W.TASK_COLUMNS.indexOf(col) !== -1 &&
+        row >= W.DATA_START_ROW &&
+        row <= W.LAST_TIME_ROW
+      ) {
+        copyLinkToWeeklyCell_(e.range);
       }
       return;
     }
@@ -226,7 +238,7 @@ function deleteTaskPrompt_() {
  * @returns {string} status message
  */
 function installTriggers() {
-  const managed = ['handleEdit', 'dailyMaintenance', 'morningTelegram', 'mealStory'];
+  const managed = ['handleEdit', 'dailyMaintenance', 'morningTelegram', 'mealStory', 'refreshTimeHighlight', 'diaryReminder'];
   const triggers = ScriptApp.getProjectTriggers();
   for (let i = 0; i < triggers.length; i++) {
     if (managed.indexOf(triggers[i].getHandlerFunction()) !== -1) {
@@ -248,12 +260,28 @@ function installTriggers() {
     ScriptApp.newTrigger('mealStory').timeBased().everyDays(1).atHour(mealHours[h]).create();
   }
 
+  // Update the current-time-row highlight every 5 min so it stays accurate
+  // even when the sidebar is closed.  5 min keeps worst-case lag negligible
+  // for 30-min time slots (~288 executions/day, well within quota).
+  ScriptApp.newTrigger('refreshTimeHighlight').timeBased().everyMinutes(5).create();
+
+  // Evening diary reminder (~22:30, ±15 min window). The onFormSubmit
+  // trigger for handleDiarySubmit is installed separately by setUpDiary.
+  ScriptApp.newTrigger('diaryReminder')
+    .timeBased()
+    .everyDays(1)
+    .atHour(CONFIG.DIARY.SEND_HOUR)
+    .nearMinute(CONFIG.DIARY.SEND_MINUTE)
+    .create();
+
   // onSelectionChange (control buttons) is a SIMPLE trigger — it fires
   // automatically by name and cannot/should not be created here.
   const msg =
     'Triggers installed: live edits + daily maintenance (~5am) + Telegram recap (~' +
     CONFIG.TELEGRAM.SEND_HOUR + 'am) + meal stories (' +
-    mealHours.join(', ') + '). Control buttons work automatically.';
+    mealHours.join(', ') + ') + diary reminder (~' +
+    CONFIG.DIARY.SEND_HOUR + ':' + String(CONFIG.DIARY.SEND_MINUTE).padStart(2, '0') +
+    '). Control buttons work automatically.';
   toast_(msg, 'Weekly Plan');
   return msg;
 }
@@ -278,6 +306,17 @@ function runDailyInitCore_() {
   });
   safeInit_('Weekly boss skipped', function () {
     ensureWeeklyBoss_();
+  });
+  // Diary: refresh the top band (self-heals after a rollover clears it) and
+  // apply deferred habit/badge side effects in this spreadsheet context.
+  safeInit_('Diary band refresh skipped', function () {
+    refreshWeeklyFocusBand_();
+  });
+  safeInit_('Diary habits skipped', function () {
+    processPendingDiaryHabits_();
+  });
+  safeInit_('Diary chronicler badge skipped', function () {
+    maybeAwardChronicler_();
   });
   PropertiesService.getDocumentProperties().setProperty(
     'lastInitDate',
@@ -331,6 +370,16 @@ function morningTelegram() {
 function mealStory() {
   safeInit_('Meal story skipped', function () {
     sendMealStory_(false);
+  });
+}
+
+/**
+ * Time-driven evening trigger (~22:30). Sends the prefilled diary form link
+ * to Telegram once per day (deduped + enable-gated inside sendDiaryReminder_).
+ */
+function diaryReminder() {
+  safeInit_('Diary reminder skipped', function () {
+    sendDiaryReminder_(false);
   });
 }
 
@@ -425,11 +474,21 @@ function exportSummaryFromUI() {
 }
 
 /**
- * Refresh the Weekly time-row highlight (driven by the sidebar's timer).
+ * Refresh the Weekly time-row highlight.  Called by the sidebar's 60 s
+ * poller AND by the background 30-min time-driven trigger so the highlight
+ * stays current even when the sidebar is closed.
  */
-function refreshTimeHighlightFromUI() {
+function refreshTimeHighlight() {
   const sheet = getSheetByName_(CONFIG.WEEKLY_SHEET);
   if (sheet) highlightCurrentTimeRow(sheet);
+}
+
+/**
+ * Sidebar wrapper — delegates to the shared refreshTimeHighlight above.
+ * @deprecated Kept for backward compat; the sidebar can call refreshTimeHighlight directly.
+ */
+function refreshTimeHighlightFromUI() {
+  refreshTimeHighlight();
 }
 
 /** @returns {string} status message */

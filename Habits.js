@@ -19,6 +19,26 @@ function getLastHabitRow_() {
 }
 
 /**
+ * 1-based row of a habit by name (column A), or -1 when not found.
+ * Shared by Setup (ensureDiaryHabit_) and Diary (processPendingDiaryHabits_).
+ * @param {string} name
+ * @returns {number}
+ */
+function findHabitRowByName_(name) {
+  if (!name) return -1;
+  const sheet = getSheetByName_(CONFIG.HABITS_SHEET);
+  if (!sheet) return -1;
+  const H = CONFIG.HABITS;
+  const last = getLastHabitRow_();
+  if (last < H.DATA_START_ROW) return -1;
+  const vals = sheet.getRange(H.DATA_START_ROW, 1, last - H.DATA_START_ROW + 1, 1).getValues();
+  for (let i = 0; i < vals.length; i++) {
+    if (String(vals[i][0]).trim() === String(name)) return H.DATA_START_ROW + i;
+  }
+  return -1;
+}
+
+/**
  * DocumentProperties key holding the YYYYMMDD date on which the habit
  * "done" fills were last reset. Used so the green completion color clears
  * exactly once per new day, not on every sidebar open.
@@ -155,23 +175,26 @@ function refreshHabitsDates() {
 }
 
 /**
- * Record a habit completion for a row (triggered by checking its box).
+ * Record a habit completion for a row (triggered by checking its box, or
+ * by the deferred diary-habit processing for a specific date).
  * Applies a streak bonus and resets the checkbox afterwards.
  * @param {number} row 1-based row of the habit
+ * @param {Date} [date] date to mark (default: today)
  */
-function recordHabitDone(row) {
+function recordHabitDone(row, date) {
   const sheet = getSheetByName_(CONFIG.HABITS_SHEET);
   if (!sheet) return;
   const H = CONFIG.HABITS;
 
+  const habitDate = date || new Date();
   const checkboxCol = columnLetterToIndex(H.COLUMNS.DONE_CHECKBOX) + 1;
   const resetCheckbox = function () {
     sheet.getRange(row, checkboxCol).setValue(false);
   };
 
-  const dayIndex = findHabitsDayIndex(sheet);
+  const dayIndex = findHabitsDayIndexForDate_(sheet, habitDate);
   if (dayIndex < 0) {
-    toast_('Today not found in the window. Click "Dates" to refresh.', 'Weekly Plan');
+    toast_('Date not found in the window. Click "Dates" to refresh.', 'Weekly Plan');
     resetCheckbox();
     return;
   }

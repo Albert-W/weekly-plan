@@ -28,11 +28,54 @@ function auth_(e) {
 // ---- GET: 每日快照 ----
 
 function doGet(e) {
+  // Diary view: private content — strict auth (refuse when syncAuthKey unset),
+  // enforced inside handleDiaryView_. Everything else uses the lenient auth_.
+  if (e && e.parameter && e.parameter.view === 'diary') {
+    return handleDiaryView_(e);
+  }
   if (!auth_(e)) return unauth_();
   try {
     var snapshot = buildSnapshot_();
     snapshot.ok = true;
     return json_(snapshot);
+  } catch (err) {
+    return json_({ ok: false, error: String(err && err.message ? err.message : err) });
+  }
+}
+
+/**
+ * ?view=diary&k=KEY&since=YYYYMMDD&to=YYYYMMDD&limit=N[&callback=cb]
+ * Diary rows (newest first) with a per-date system snapshot joined from the
+ * Summary + Habits sheets. Strict auth: refuses when syncAuthKey is unset.
+ * JSONP via `callback` (only needed if a browser page talks to the Web App
+ * directly; the Mac bot fetches server-side and needs no CORS workaround).
+ * @param {GoogleAppsScript.Events.DoGet} e
+ * @returns {GoogleAppsScript.Content.TextOutput}
+ */
+function handleDiaryView_(e) {
+  var expected = (PropertiesService.getScriptProperties().getProperty(CONFIG.SYNC.AUTH_KEY_PROP) || '');
+  var key = (e && e.parameter && e.parameter.k) || '';
+  if (!expected || key !== expected) return unauth_();
+
+  try {
+    var p = (e && e.parameter) || {};
+    var rows = buildDiaryViewPayload_(
+      p.since || '',
+      p.to || '',
+      parseInt(p.limit, 10) || 0
+    );
+    var payload = { ok: true, diary: rows };
+
+    var cb = p.callback || '';
+    if (cb) {
+      if (!/^[A-Za-z_$][\w$]*$/.test(cb)) {
+        return json_({ ok: false, error: 'invalid callback' });
+      }
+      return ContentService
+        .createTextOutput(cb + '(' + JSON.stringify(payload) + ');')
+        .setMimeType(ContentService.MimeType.JAVASCRIPT);
+    }
+    return json_(payload);
   } catch (err) {
     return json_({ ok: false, error: String(err && err.message ? err.message : err) });
   }

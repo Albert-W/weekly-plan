@@ -20,6 +20,7 @@ const BADGE_META_ = {
   quest_master: { emoji: '🎯', label: 'Quest Master', desc: 'Completed 10 quest items' },
   early_bird: { emoji: '🌅', label: 'Early Bird', desc: 'Logged a win before 9am' },
   boss_slayer: { emoji: '🐉', label: 'Boss Slayer', desc: 'Defeated a Weekly Boss' },
+  chronicler: { emoji: '📖', label: 'Chronicler', desc: 'Wrote a diary entry' },
 };
 
 /**

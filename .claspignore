@@ -4,3 +4,6 @@
 !appsscript.json
 !*.js
 !*.html
+
+# Local Mac-side integration files (SQLite pull/enrich + reader) stay local.
+local/

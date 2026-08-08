@@ -290,6 +290,8 @@ function processWeeklyScoreChange(row, col, newScore) {
   let taskName = '';
   let comboDays = 0;
   let isQuestTask = false;
+  let isHabit = false;
+  let habitRow = -1;
 
   // ------------------------------------------------------------------
   // Read-modify-write under the document lock. The quest combo is
@@ -313,8 +315,8 @@ function processWeeklyScoreChange(row, col, newScore) {
       // 3) Fallback      → "others" row or auto-create (weight = 1)
       // ------------------------------------------------------------------
       let taskWeight = 1;
-      let isHabit = false;
-      let habitRow = -1;
+      isHabit = false;
+      habitRow = -1;
       let taskRow = -1;
       let isNewTask = false;
       let currentCount = 0;

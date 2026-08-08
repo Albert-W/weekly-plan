@@ -25,9 +25,10 @@ function setUpSheets() {
   setUpHabitsSheet_();
   setUpWeeklySheet_();
   setUpSummarySheet_();
+  setUpDiarySheet_();
   setUpArchiveSheet_();
   toast_('Sheets are set up and ready.', 'Weekly Plan');
-  return 'Weekly, Habits, Tasks, Summary, and Archive are ready.';
+  return 'Weekly, Habits, Tasks, Summary, Diary, and Archive are ready.';
 }
 
 // ----------------------------------------------------------------------
@@ -351,6 +352,10 @@ function setUpHabitsSheet_() {
     }
   }
 
+  // Add the diary habit ("写日记") if missing. Runs even when sample seeding
+  // was skipped — existing users already have habits and still need this one.
+  ensureDiaryHabit_();
+
   // Native checkboxes in the "Done?" column for a generous row range so
   // habits typed later already have a checkbox. Empty rows are ignored
   // by recordHabitDone (it guards on habit name).
@@ -364,11 +369,32 @@ function setUpHabitsSheet_() {
     )
     .insertCheckboxes();
 
-  // Populate the 14-day window header (B3 + D3:Q3) and current-day highlight.
-  refreshHabitsDatesCore_(sheet);
+  // Populate the 14-day window header (B3 + D3:Q3) on first setup only.
+  // Re-running must NOT clear existing completion data, so we check
+  // whether the day headers already have values before refreshing.
+  const firstDayHeader = sheet.getRange(H.HEADER_RANGE).getValues()[0];
+  const hasDateHeaders = firstDayHeader.some(function (v) { return v !== '' && v !== null; });
+  if (!hasDateHeaders) {
+    refreshHabitsDatesCore_(sheet);
+  }
   highlightCurrentDateHeader(sheet);
 
   sheet.setFrozenRows(H.HEADER_ROW);
+}
+
+/**
+ * Add the "写日记" habit (weight 1) to the Habits sheet if not present.
+ * Idempotent — safe on every set-up / re-run.
+ */
+function ensureDiaryHabit_() {
+  const sheet = getSheetByName_(CONFIG.HABITS_SHEET);
+  if (!sheet) return;
+  const D = CONFIG.DIARY;
+  if (findHabitRowByName_(D.HABIT_NAME) >= 0) return;
+  const lastRow = getLastRowInColumn_(sheet, 1);
+  const row = Math.max(lastRow + 1, CONFIG.HABITS.DATA_START_ROW);
+  sheet.getRange(CONFIG.HABITS.COLUMNS.HABIT_NAME + row).setValue(D.HABIT_NAME);
+  sheet.getRange(CONFIG.HABITS.COLUMNS.WEIGHT + row).setValue(D.HABIT_WEIGHT);
 }
 
 // ----------------------------------------------------------------------

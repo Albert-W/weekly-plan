@@ -60,6 +60,19 @@ function escapeHtmlTelegram_(s) {
 }
 
 /**
+ * Truncate a diary free-text field for the recap (~60 chars), with a
+ * placeholder for empty values.
+ * @param {string} s
+ * @returns {string}
+ */
+function truncateDiaryText_(s) {
+  const t = String(s || '').trim();
+  if (!t) return '—';
+  const MAX = 60;
+  return t.length > MAX ? t.slice(0, MAX) + '…' : t;
+}
+
+/**
  * POST a message to the Telegram Bot API (sendMessage).
  * @param {string} text message body
  * @param {string|null} [parseMode] 'HTML' (default) for formatted text,
@@ -133,6 +146,14 @@ function buildMorningTelegramMessage_() {
     lines.push('No activity logged. Fresh start today! 💪');
   }
   lines.push('');
+
+  // ---- Last night's diary ----
+  const diary = getDiaryForDate_(formatDateYYYYMMDD(yDate));
+  if (diary) {
+    lines.push('✍️ <b>Last night\'s diary</b>');
+    lines.push('😟 Worry: <b>' + esc(truncateDiaryText_(diary.worry)) + '</b>');
+    lines.push('🎯 Today\'s plan: <b>' + esc(truncateDiaryText_(diary.tomorrow_plan)) + '</b>');
+  }
 
   // ---- Today's quest section ----
   const qHabit = (quest && quest.habitName) || '—';
