@@ -174,7 +174,7 @@ const CONFIG = {
   },
 
   // ==================== DAILY DIARY CONFIG ====================
-  // Evening (~22:30) Telegram reminder links a prefilled Google Form; the
+  // Evening (~21:30) Telegram reminder links a prefilled Google Form; the
   // onFormSubmit trigger upserts a row in the Diary sheet, and the habit
   // check ("写日记") is deferred to a spreadsheet-context run
   // (processPendingDiaryHabits_) so XP/quest/boss state never resolves to
@@ -184,9 +184,9 @@ const CONFIG = {
   DIARY: {
     // Master on/off switch for the diary reminder + submit handling.
     ENABLED: true,
-    // Reminder hour/min. Apps Script can't hit 22:30 exactly —
-    // atHour(22).nearMinute(30) fires in the 22:15–22:45 window.
-    SEND_HOUR: 22,
+    // Reminder hour/min. Apps Script can't hit 21:30 exactly —
+    // atHour(21).nearMinute(30) fires in the 21:15–21:45 window.
+    SEND_HOUR: 21,
     SEND_MINUTE: 30,
     // Habit row seeded by Setup so submitting the form = marking this habit.
     HABIT_NAME: '写日记',

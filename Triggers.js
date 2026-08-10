@@ -265,7 +265,7 @@ function installTriggers() {
   // for 30-min time slots (~288 executions/day, well within quota).
   ScriptApp.newTrigger('refreshTimeHighlight').timeBased().everyMinutes(5).create();
 
-  // Evening diary reminder (~22:30, ±15 min window). The onFormSubmit
+  // Evening diary reminder (~21:30, ±15 min window). The onFormSubmit
   // trigger for handleDiarySubmit is installed separately by setUpDiary.
   ScriptApp.newTrigger('diaryReminder')
     .timeBased()
@@ -374,7 +374,7 @@ function mealStory() {
 }
 
 /**
- * Time-driven evening trigger (~22:30). Sends the prefilled diary form link
+ * Time-driven evening trigger (~21:30). Sends the prefilled diary form link
  * to Telegram once per day (deduped + enable-gated inside sendDiaryReminder_).
  */
 function diaryReminder() {

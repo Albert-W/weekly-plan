@@ -10,7 +10,7 @@ Core features:
 - **Daily Quest** — one featured habit + task per day with bonus multipliers and consecutive-day combo streak
 - **XP / Levels / Badges** — lifetime progression: Centurion, Rising Star, Week Warrior, Quest Master, Early Bird, Boss Slayer
 - **Weekly Boss** — rotating weekly objective; defeat grants XP + badge
-- **Daily Diary** — evening Google Form (link sent via Telegram ~22:30) → Diary sheet + "写日记" habit + Weekly top band; local SQLite + reader on the Mac (see `local/`)
+- **Daily Diary** — evening Google Form (link sent via Telegram ~21:30) → Diary sheet + "写日记" habit + Weekly top band; local SQLite + reader on the Mac (see `local/`)
 - **Automation** — daily triggers: ~5am maintenance + calendar sync, ~8am Telegram recap, 3x/day Gemini-generated meal-time habit stories
 - **Web App API** (`WebApp.js`) — JSON snapshot + habit check-in + diary view (`?view=diary`) endpoints for an external Mac Mini bot
 
@@ -107,7 +107,7 @@ clasp push   # uploads *.js, *.html, appsscript.json (per .claspignore)
 - `dailyMaintenance` — ~5am (init + calendar sync + diary band refresh / deferred habit)
 - `morningTelegram` — ~8am (recap message; includes last night's diary worry + plan)
 - `mealStory` — 3x/day (Gemini-generated habit stories to Telegram)
-- `diaryReminder` — ~22:30 (diary form link via Telegram; the `handleDiarySubmit` form trigger is installed separately by **Set up Diary…**)
+- `diaryReminder` — ~21:30 (diary form link via Telegram; the `handleDiarySubmit` form trigger is installed separately by **Set up Diary…**)
 
 All triggers are installed idempotently via `Triggers.installTriggers()`.
 

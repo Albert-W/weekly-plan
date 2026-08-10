@@ -1,7 +1,7 @@
 /**
  * Daily Diary feature (Google Sheets edition).
  *
- * Every evening (~22:30) a Telegram reminder links a prefilled Google Form.
+ * Every evening (~21:30) a Telegram reminder links a prefilled Google Form.
  * Submitting it upserts one row in the Diary sheet (keyed by date), refreshes
  * the Weekly top band ("😟 worry" on row 1, "🎯 plan" on row 3), and marks the
  * "写日记" habit done — deferred to a spreadsheet-context run.
