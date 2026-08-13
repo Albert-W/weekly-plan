@@ -38,9 +38,7 @@ function onOpen() {
     .addSeparator()
     .addItem('Export all to Drive', 'exportAllFromUI')
     .addItem('Send Telegram recap now', 'sendTelegramNowFromUI')
-    .addItem('Send meal story now', 'sendMealStoryNowFromUI')
     .addItem('Set up Telegram…', 'setUpTelegram')
-    .addItem('Set up Gemini…', 'setUpGemini')
     .addItem('Set up Diary…', 'setUpDiary')
     .addItem('Send diary reminder now', 'sendDiaryReminderFromUI')
     .addItem('Email summary now', 'sendSummaryEmailNowFromUI')
@@ -238,6 +236,9 @@ function deleteTaskPrompt_() {
  * @returns {string} status message
  */
 function installTriggers() {
+  // 'mealStory' stays in the deletion list even though the feature was
+  // removed, so a re-run of this installer purges any stale triggers still
+  // installed from before the removal.
   const managed = ['handleEdit', 'dailyMaintenance', 'morningTelegram', 'mealStory', 'refreshTimeHighlight', 'diaryReminder'];
   const triggers = ScriptApp.getProjectTriggers();
   for (let i = 0; i < triggers.length; i++) {
@@ -253,12 +254,6 @@ function installTriggers() {
     .everyDays(1)
     .atHour(CONFIG.TELEGRAM.SEND_HOUR)
     .create();
-
-  // One meal-story trigger per configured meal hour (breakfast/lunch/dinner).
-  const mealHours = CONFIG.STORY.MEAL_HOURS || [];
-  for (let h = 0; h < mealHours.length; h++) {
-    ScriptApp.newTrigger('mealStory').timeBased().everyDays(1).atHour(mealHours[h]).create();
-  }
 
   // Update the current-time-row highlight every 5 min so it stays accurate
   // even when the sidebar is closed.  5 min keeps worst-case lag negligible
@@ -278,8 +273,7 @@ function installTriggers() {
   // automatically by name and cannot/should not be created here.
   const msg =
     'Triggers installed: live edits + daily maintenance (~5am) + Telegram recap (~' +
-    CONFIG.TELEGRAM.SEND_HOUR + 'am) + meal stories (' +
-    mealHours.join(', ') + ') + diary reminder (~' +
+    CONFIG.TELEGRAM.SEND_HOUR + 'am) + diary reminder (~' +
     CONFIG.DIARY.SEND_HOUR + ':' + String(CONFIG.DIARY.SEND_MINUTE).padStart(2, '0') +
     '). Control buttons work automatically.';
   toast_(msg, 'Weekly Plan');
@@ -359,17 +353,6 @@ function dailyMaintenance() {
 function morningTelegram() {
   safeInit_('Morning Telegram skipped', function () {
     sendMorningTelegram_(false);
-  });
-}
-
-/**
- * Time-driven meal trigger (one per CONFIG.STORY.MEAL_HOURS). Picks a
- * random habit, has Gemini write a short motivating story about it, and
- * sends it to Telegram. Deduped + enable-gated inside sendMealStory_.
- */
-function mealStory() {
-  safeInit_('Meal story skipped', function () {
-    sendMealStory_(false);
   });
 }
 

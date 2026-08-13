@@ -11,7 +11,7 @@ Core features:
 - **XP / Levels / Badges** — lifetime progression: Centurion, Rising Star, Week Warrior, Quest Master, Early Bird, Boss Slayer
 - **Weekly Boss** — rotating weekly objective; defeat grants XP + badge
 - **Daily Diary** — evening Google Form (link sent via Telegram ~21:30) → Diary sheet + "写日记" habit + Weekly top band; local SQLite + reader on the Mac (see `local/`)
-- **Automation** — daily triggers: ~5am maintenance + calendar sync, ~8am Telegram recap, 3x/day Gemini-generated meal-time habit stories
+- **Automation** — daily triggers: ~5am maintenance + calendar sync, ~8am Telegram recap, ~21:30 diary reminder
 - **Web App API** (`WebApp.js`) — JSON snapshot + habit check-in + diary view (`?view=diary`) endpoints for an external Mac Mini bot
 
 ## Tech Stack
@@ -22,7 +22,7 @@ Core features:
 - **Deployment:** `@google/clasp` CLI — `clasp push` to upload `.js`, `.html`, `appsscript.json`
 - **No npm dependencies, no build step, no tests**
 - **Google services:** SpreadsheetApp, CalendarApp, DriveApp, MailApp, UrlFetchApp, LockService, PropertiesService, HtmlService, ContentService, ScriptApp
-- **External APIs:** Telegram Bot API (recaps + stories), Google Gemini API (story generation via `gemini-1.5-flash`)
+- **External APIs:** Telegram Bot API (recaps + diary reminders)
 - **OAuth scopes** (`appsscript.json`): `spreadsheets.currentonly`, `script.container.ui`, `script.scriptapp`, `script.send_mail`, `script.external_request`, `calendar.readonly`, `drive.file`, `forms`
 
 ## Architecture
@@ -44,7 +44,6 @@ All `.js` files share **one global scope** — no imports/exports. The `CONFIG` 
 | `Boss.js` | Weekly Boss: deterministic pick, progress tracking, `checkBossDefeat_` (XP + badge under lock) |
 | `Email.js` | Morning summary email (HTML + text); disabled by default in favor of Telegram |
 | `Telegram.js` | Telegram bot: credential setup, message send, morning recap builder |
-| `Story.js` | Meal-time stories: random habit pick, Gemini `generateContent`, simplified-Chinese prompt, Telegram send |
 | `Diary.js` | Daily diary: form setup (`setUpDiary`), onFormSubmit handler, Diary sheet upsert, Weekly top band, deferred habit/badge processing, WebApp diary payload |
 | `Calendar.js` | One-way Google Calendar → Weekly grid import |
 | `Export.js` | CSV building (with OWASP formula-injection guard), Archive sheet, Drive folder/file helpers |
@@ -58,7 +57,7 @@ All `.js` files share **one global scope** — no imports/exports. The `CONFIG` 
 - **Deterministic picks:** Quest (daily) and Boss (weekly) are chosen via FNV-1a hash on `date|salt`, ensuring consistent results without stored state
 - **Sidebar communication:** Server functions named `*FromUI` are called from `Sidebar.html` via `google.script.run`; polling every 3s for score/log/quest/xp/boss, every 60s for time-row highlight
 - **Idempotent setup:** `setUpSheets()` and badge awarding check for existing state before acting — safe to re-run
-- **Feature toggles:** All in `CONFIG.FEATURE_FLAGS`: `email`, `telegram`, `gemini`, `story`, `calendar`, `boss`
+- **Feature toggles:** Per-feature `ENABLED` flags on the config objects: `EMAIL.ENABLED`, `TELEGRAM.ENABLED`, `DIARY.ENABLED`, `CALENDAR.ENABLED`
 
 ### Cross-Module Data Flow (Scoring)
 
@@ -78,7 +77,7 @@ Triggers.handleEdit
 
 ### Secret / State Storage
 
-- **Script Properties:** `telegramBotToken`, `telegramChatId`, `geminiApiKey`, `syncAuthKey`, `spreadsheetId`, `diaryFormId`, `diaryLastSent`, `diaryHabitLastDate`
+- **Script Properties:** `telegramBotToken`, `telegramChatId`, `syncAuthKey`, `spreadsheetId`, `diaryFormId`, `diaryLastSent`, `diaryHabitLastDate`
 - **DocumentProperties:** All runtime state under `wp.*`-prefixed keys (registry in `Config.js` lines 9–23) — except the diary's state, which deliberately lives in Script Properties because its onFormSubmit trigger fires in a cross-document (Form) context
 - API keys never appear in source code
 
@@ -99,14 +98,12 @@ clasp push   # uploads *.js, *.html, appsscript.json (per .claspignore)
 ### External Service Setup
 
 - **Telegram:** **Weekly Plan → Set up Telegram** — paste bot token from @BotFather + chat ID from @userinfobot
-- **Gemini:** **Weekly Plan → Set up Gemini** — paste API key from aistudio.google.com
 - **Web App / Mac bot:** Deploy `WebApp.js` as Web App ("Execute as: me, Access: Anyone"), set `syncAuthKey` + `spreadsheetId` in Script Properties
 
 ### Trigger Schedule
 
 - `dailyMaintenance` — ~5am (init + calendar sync + diary band refresh / deferred habit)
 - `morningTelegram` — ~8am (recap message; includes last night's diary worry + plan)
-- `mealStory` — 3x/day (Gemini-generated habit stories to Telegram)
 - `diaryReminder` — ~21:30 (diary form link via Telegram; the `handleDiarySubmit` form trigger is installed separately by **Set up Diary…**)
 
 All triggers are installed idempotently via `Triggers.installTriggers()`.
@@ -116,7 +113,6 @@ All triggers are installed idempotently via `Triggers.installTriggers()`.
 - **Single global scope** — no `import`/`export`; all symbols are shared. Avoid naming collisions across files.
 - **No local run target** — code only executes in the Apps Script runtime. There is no `package.json`, no `npm start`, no test runner.
 - **Office.js predecessor** (`../src`) is **not in this repo**. References in README/comments to `../src/taskpane/js/*` are historical.
-- **Gemini model**: `Config.js` `GEMINI.MODEL` — verify against current Gemini API if touching the story feature.
 - **Weekly grid row indices are hardcoded** (`DATA_START_ROW=5`, `SCORE_ROW=38`) — never insert rows above the grid. The diary top band uses the free rows 1 & 3 with wrap/height instead.
 - **Form-trigger caveat**: `handleDiarySubmit` runs in a Form (cross-document) context — keep gamification side effects (habit/XP/badge) in spreadsheet-context functions (`processPendingDiaryHabits_`, `maybeAwardChronicler_`), and keep diary state in Script Properties.
 - Sidebar is **poll-based** (Apps Script has no server→client push), keep polling intervals reasonable.
