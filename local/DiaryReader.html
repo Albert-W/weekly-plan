@@ -6,9 +6,16 @@
   The bot must expose GET /api/diary returning the same shape as the GAS
   Web App's ?view=diary endpoint:
       { "ok": true, "diary": [ { date, mood, worry, highlight, tomorrow_plan,
+          improve,
           submitted_at, updated_at, summary:{positive,negative,total}|null,
           habits_done, weekday, weather, lunar_date, moon_phase, season,
-          tags, worry_controllable, summary_line } ] }
+          summary_line } ],
+        "weekly_plan_url": "https://docs.google.com/spreadsheets/d/…" }
+
+  Note: the API key `worry` carries the "📌 今日要点" field — the diary is a
+  morning plan (2026-10-15), but the storage key kept its original name.
+  `summary_line` is historical: the LLM pass that wrote it was removed
+  (2026-10-17), so newer entries have null and render without the summary block.
 
   Self-contained (no frameworks, no build). Enriched fields that are empty or
   not yet filled render as "—".
@@ -59,19 +66,35 @@
   .card-date { font-weight: 700; font-size: 16px; }
   .card-meta { font-size: 12px; color: var(--muted); }
   .row { display: flex; gap: 6px; margin-bottom: 8px; font-size: 14px; line-height: 1.5; }
-  .row .k { flex: 0 0 64px; color: var(--muted); font-size: 13px; }
-  .row .v { flex: 1; }
+  /* Wide enough for the longest label (📌 今日要点) so it never wraps. */
+  .row .k { flex: 0 0 92px; white-space: nowrap; color: var(--muted); font-size: 13px; }
+  /* pre-wrap: keep the author's line breaks (要点 are often a numbered list)
+     and still wrap long lines. overflow-wrap breaks unbroken long tokens. */
+  .row .v { flex: 1; white-space: pre-wrap; overflow-wrap: anywhere; }
   .mood { font-size: 22px; }
-  .tags span {
-    display: inline-block; background: #eef1ff; color: #4c4c9e;
-    border-radius: 10px; padding: 1px 10px; font-size: 12px; margin-right: 6px;
+  .summary { background: #f7f7ff; border-left: 3px solid var(--grad-a); padding: 8px 12px; border-radius: 6px; font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  /* Environment strip: feels-like / rain chance / sun times / air / pollen. */
+  .env-line {
+    font-size: 12px; color: #5f5f85; background: #f8f8fd; border-radius: 6px;
+    padding: 5px 9px; margin-bottom: 9px; white-space: pre-wrap; overflow-wrap: anywhere;
   }
-  .ctrl {
-    display: inline-block; border-radius: 10px; padding: 1px 10px; font-size: 12px; margin-left: 6px;
+
+  /* Today's timetable (from the Weekly grid, incl. synced calendar events). */
+  .schedule {
+    background: #fff; border-radius: 12px; padding: 12px 14px; margin-bottom: 16px;
+    box-shadow: 0 4px 20px rgba(0,0,0,.15);
   }
-  .ctrl.actionable { background: #e8f5e9; color: #2e7d32; }
-  .ctrl.rumination { background: #fff3e0; color: #e65100; }
-  .summary { background: #f7f7ff; border-left: 3px solid var(--grad-a); padding: 8px 12px; border-radius: 6px; font-size: 14px; }
+  .sch-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-size: 13px; font-weight: 700; margin-bottom: 8px;
+  }
+  .sch-head .sch-day { color: var(--muted); font-weight: 400; font-size: 12px; }
+  .sch-items { display: flex; flex-direction: column; gap: 4px; }
+  .sch-item { display: flex; gap: 8px; font-size: 13px; line-height: 1.45; }
+  .sch-time { flex: 0 0 108px; color: #4c4c9e; font-variant-numeric: tabular-nums; }
+  .sch-task { flex: 1; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .sch-empty { font-size: 12px; color: var(--muted); }
+  .sch-note { font-size: 11px; color: var(--muted); margin-top: 7px; }
   .stats { margin-top: 10px; padding-top: 8px; border-top: 1px dashed #ddd; font-size: 12px; color: var(--muted); }
   .empty { color: rgba(255,255,255,.9); text-align: center; padding: 40px 0; }
   .error { background: #ffebee; color: #c62828; border-radius: 8px; padding: 12px; margin-bottom: 14px; }
@@ -81,7 +104,13 @@
     box-shadow: 0 4px 20px rgba(0,0,0,.15);
   }
   .cal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .cal-left { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .cal-title { font-weight: 700; font-size: 15px; }
+  /* Consecutive-days badge: computed from the diary rows, no extra data. */
+  .streak {
+    font-size: 12px; background: #fff4e5; color: #b26a00; border-radius: 10px;
+    padding: 2px 9px; white-space: nowrap;
+  }
   .cal-nav button {
     background: var(--grad-a); color: #fff; border: none; border-radius: 6px;
     padding: 4px 10px; font-size: 13px; cursor: pointer; margin-left: 6px;
@@ -103,17 +132,94 @@
   .cal-cell.today { box-shadow: inset 0 0 0 1px var(--grad-a); }
   .cal-cell.sel { background: var(--grad-a); color: #fff; }
   .cal-cell.sel.has::after { background: #fff; }
+
+  /* ---- buttons + editor ---- */
+  .btn {
+    background: #fff; color: #4c4c9e; border: 2px solid #dcdcf5; border-radius: 8px;
+    padding: 5px 12px; font-size: 13px; cursor: pointer; font-family: inherit;
+  }
+  .btn:hover { background: #f2f3ff; }
+  .btn:disabled { opacity: .55; cursor: default; }
+  a.btn { display: inline-block; text-decoration: none; line-height: 1.3; }
+  .btn-primary { background: var(--grad-a); border-color: var(--grad-a); color: #fff; }
+  .btn-primary:hover { background: #5a6fd8; }
+  .btn-write { background: var(--grad-a); border-color: var(--grad-a); color: #fff; margin-left: 6px; }
+  .btn-write:hover { background: #5a6fd8; }
+  .card-edit {
+    background: #f2f3ff; border: 1px solid #dcdcf5; color: #4c4c9e; border-radius: 8px;
+    padding: 2px 10px; font-size: 12px; cursor: pointer; font-family: inherit; margin-left: 8px;
+  }
+  .card-edit:hover { background: #e6e8ff; }
+  .fill-card {
+    background: #fff; border-radius: 12px; padding: 22px 18px; text-align: center;
+    box-shadow: 0 4px 20px rgba(0,0,0,.15); font-size: 14px;
+  }
+  .fill-card p { margin: 0 0 12px; color: var(--muted); }
+
+  .modal {
+    position: fixed; inset: 0; background: rgba(30,20,60,.45); z-index: 50;
+    display: flex; align-items: flex-start; justify-content: center;
+    padding: 24px 16px; overflow-y: auto;
+  }
+  .modal[hidden] { display: none; }
+  .modal-box {
+    background: #fff; border-radius: 14px; width: 100%; max-width: 560px;
+    box-shadow: 0 12px 40px rgba(0,0,0,.3);
+  }
+  .modal-head {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 14px 18px; border-bottom: 2px solid var(--grad-a); font-weight: 700;
+  }
+  .modal-head .x {
+    background: none; border: none; font-size: 24px; line-height: 1;
+    color: var(--muted); cursor: pointer; padding: 0 4px;
+  }
+  .modal-body { padding: 14px 18px; }
+  .fld { margin-bottom: 12px; }
+  .fld > label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
+  .fld input[type=date], .fld textarea {
+    width: 100%; border: 2px solid #e0e0e0; border-radius: 8px; padding: 8px 10px;
+    font-size: 14px; font-family: inherit; color: var(--ink);
+  }
+  .fld textarea { resize: vertical; }
+  .fld input:focus, .fld textarea:focus { border-color: var(--grad-a); outline: none; }
+  .fld-inline { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .fld-inline > label { margin: 0; }
+  .fld-inline input[type=date] { width: auto; }
+  .hint { font-size: 12px; color: var(--muted); }
+  .mood-pick { display: flex; gap: 8px; }
+  .mood-pick button {
+    font-size: 22px; line-height: 1; background: #f6f6fb; border: 2px solid #e6e6f2;
+    border-radius: 10px; padding: 4px 10px; cursor: pointer;
+  }
+  .mood-pick button.on { border-color: var(--grad-a); background: #eef1ff; }
+  .modal-err { background: #ffebee; color: #c62828; border-radius: 8px; padding: 8px 10px; font-size: 13px; }
+  .modal-foot {
+    display: flex; justify-content: flex-end; align-items: center; gap: 8px;
+    padding: 12px 18px; border-top: 1px solid #eee;
+  }
+  .modal-foot .save-note { margin-right: auto; font-size: 12px; color: var(--muted); }
+  #toast {
+    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+    background: rgba(40,30,80,.92); color: #fff; padding: 10px 18px; border-radius: 20px;
+    font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 60;
+  }
+  #toast.show { opacity: 1; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1>📓 日记</h1>
-  <div class="sub">点击日历里的某一天查看当天日记 · 有日记的日子带圆点</div>
+  <div class="sub">早上写「今日要点」· 点日历里的某一天查看当天记录 · 有日记的日子带圆点 · 「✍️ 写今天」随时补写或修改，和 Telegram 表单填的是同一行</div>
 
   <div class="calendar">
     <div class="cal-head">
-      <span class="cal-title" id="cal-title">—</span>
+      <span class="cal-left">
+        <span class="cal-title" id="cal-title">—</span>
+        <span class="streak" id="streak" hidden></span>
+      </span>
       <span class="cal-nav">
+        <button class="btn-write" id="cal-write" type="button">✍️ 写今天</button>
         <button id="cal-today" type="button">今天</button>
         <button id="cal-prev" type="button">◀</button>
         <button id="cal-next" type="button">▶</button>
@@ -122,16 +228,52 @@
     <div class="cal-grid" id="cal-grid"></div>
   </div>
 
+  <div class="schedule" id="schedule" hidden></div>
+
   <div class="filters">
     <label>从 <input type="date" id="f-from" /></label>
     <label>到 <input type="date" id="f-to" /></label>
     <label>心情 <select id="f-mood"><option value="">全部</option></select></label>
-    <input class="search" type="text" id="f-text" placeholder="搜索 担忧 / 亮点 / 计划 / 摘要 / 标签…" />
+    <input class="search" type="text" id="f-text" placeholder="搜索 今日要点 / 亮点 / 计划 / 改进 / 摘要…" />
+    <button class="btn" id="f-sync" type="button" title="从 Google 表格重新拉取一次">🔄 同步</button>
+    <a class="btn" id="f-plan" href="#" target="_blank" rel="noopener" hidden>📊 Weekly Plan</a>
   </div>
 
   <div id="error" class="error" hidden></div>
   <div id="list"></div>
 </div>
+
+<div class="modal" id="editor" hidden>
+  <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="editor-title">
+    <div class="modal-head">
+      <span id="editor-title">✍️ 写日记</span>
+      <button class="x" id="ed-close" type="button" aria-label="关闭">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="fld fld-inline">
+        <label for="ed-date">日期</label>
+        <input type="date" id="ed-date" />
+        <span class="hint" id="ed-hint"></span>
+      </div>
+      <div class="fld">
+        <label>心情</label>
+        <div class="mood-pick" id="ed-mood"></div>
+      </div>
+      <div class="fld"><label for="ed-worry">📌 今日要点</label><textarea id="ed-worry" rows="3"></textarea></div>
+      <div class="fld"><label for="ed-highlight">⭐ 亮点</label><textarea id="ed-highlight" rows="3"></textarea></div>
+      <div class="fld"><label for="ed-plan">🎯 明日计划</label><textarea id="ed-plan" rows="3"></textarea></div>
+      <div class="fld"><label for="ed-improve">🔧 改进</label><textarea id="ed-improve" rows="2"></textarea></div>
+      <div class="modal-err" id="ed-err" hidden></div>
+    </div>
+    <div class="modal-foot">
+      <span class="save-note" id="ed-note"></span>
+      <button class="btn" id="ed-cancel" type="button">取消</button>
+      <button class="btn btn-primary" id="ed-save" type="button">保存</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" role="status" aria-live="polite"></div>
 
 <script>
 (function () {
@@ -164,9 +306,71 @@
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
   function dash(v) { return (v === null || v === undefined || v === '') ? '—' : v; }
-  function parseTags(tags) {
-    if (!tags) return [];
-    try { var a = JSON.parse(tags); return Array.isArray(a) ? a : []; } catch (e) { return []; }
+  /** Numbers come off the sheet with float noise (2.4200000000000004). */
+  function num(v) {
+    var n = parseFloat(v);
+    if (!isFinite(n)) return dash(v);
+    return String(Math.round(n * 100) / 100);
+  }
+  function toMinutes(hhmm) {
+    var m = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm || ''));
+    return m ? (+m[1]) * 60 + (+m[2]) : null;
+  }
+  /** 'HH:MM' + n minutes → 'HH:MM' (null in → input unchanged). */
+  function addMinutes(hhmm, n) {
+    var t = toMinutes(hhmm);
+    if (t === null) return hhmm;
+    t = (t + n + 1440) % 1440;
+    return pad2(Math.floor(t / 60)) + ':' + pad2(t % 60);
+  }
+  function daylight(a, b) {
+    var ma = toMinutes(a), mb = toMinutes(b);
+    if (ma === null || mb === null || mb <= ma) return '';
+    var d = mb - ma;
+    return Math.floor(d / 60) + 'h' + pad2(d % 60) + 'm';
+  }
+  /** European AQI bands. */
+  function aqiLabel(v) {
+    var n = parseFloat(v);
+    if (!isFinite(n)) return '';
+    if (n <= 20) return '优';
+    if (n <= 40) return '良';
+    if (n <= 60) return '中等';
+    if (n <= 80) return '较差';
+    if (n <= 100) return '差';
+    return '极差';
+  }
+  var POLLEN_CN = { birch: '桦树', grass: '草', alder: '桤木' };
+  /** {} (measured, all zero) → '无'; null (not measured) → '' (segment hidden). */
+  function pollenText(p) {
+    if (!p || typeof p !== 'object') return '';
+    var keys = Object.keys(p);
+    if (!keys.length) return '无';
+    return keys.map(function (k) {
+      return (POLLEN_CN[k] || k) + ' ' + num(p[k]);
+    }).join(' · ');
+  }
+  /** The extra environment facts worth showing for one day. */
+  function envSegments(r) {
+    var out = [];
+    if (r.feels_min != null && r.feels_max != null) {
+      out.push('🌡 体感 ' + num(r.feels_min) + '–' + num(r.feels_max) + '°C');
+    }
+    if (r.precip_prob != null) out.push('🌧 降水 ' + num(r.precip_prob) + '%');
+    if (r.sunrise || r.sunset) {
+      var seg = '🌅 ' + (r.sunrise || '—') + ' / ' + (r.sunset || '—');
+      var dl = daylight(r.sunrise, r.sunset);
+      if (dl) seg += '（日照 ' + dl + '）';
+      out.push(seg);
+    }
+    if (r.aqi != null) {
+      var air = '🌬 AQI ' + num(r.aqi) + ' ' + aqiLabel(r.aqi);
+      if (r.pm25 != null) air += ' · PM2.5 ' + num(r.pm25);
+      out.push(air);
+    }
+    var pollen = pollenText(r.pollen);
+    if (pollen) out.push('🌿 花粉 ' + pollen);
+    return out;
   }
 
   function buildMoodOptions() {
@@ -184,6 +388,36 @@
   function todayISO() {
     var t = new Date();
     return isoOf(t.getFullYear(), t.getMonth(), t.getDate());
+  }
+  /** 'YYYY-MM-DD' ± n days (local, no timezone drift). */
+  function shiftDay(iso, delta) {
+    var p = iso.split('-');
+    var d = new Date(+p[0], +p[1] - 1, +p[2]);
+    d.setDate(d.getDate() + delta);
+    return isoOf(d.getFullYear(), d.getMonth(), d.getDate());
+  }
+
+  /** Consecutive days with a diary, counting back from today (or from
+   *  yesterday when today isn't written yet — the streak is still alive). */
+  function computeStreak() {
+    var has = {};
+    rows.forEach(function (r) { has[r.date] = true; });
+    var d = todayISO();
+    if (!has[d]) d = shiftDay(d, -1);
+    var n = 0;
+    while (has[d]) { n++; d = shiftDay(d, -1); }
+    return n;
+  }
+
+  function renderStreak() {
+    var el = document.getElementById('streak');
+    var n = computeStreak();
+    if (n > 0) {
+      el.textContent = '🔥 连续 ' + n + ' 天';
+      el.hidden = false;
+    } else {
+      el.hidden = true;
+    }
   }
 
   function renderCalendar() {
@@ -237,16 +471,12 @@
       if (fFrom && r.date < fFrom) return;
       if (fTo && r.date > fTo) return;
       if (fMood && String(r.mood) !== fMood) return;
-      var hay = [r.worry, r.highlight, r.tomorrow_plan, r.summary_line, parseTags(r.tags).join(' ')]
+      var hay = [r.worry, r.highlight, r.tomorrow_plan, r.improve, r.summary_line]
         .join(' ').toLowerCase();
       if (q && hay.indexOf(q) === -1) return;
 
       var s = r.summary || {};
-      var tags = parseTags(r.tags);
-      var ctrl = r.worry_controllable === 'actionable'
-        ? '<span class="ctrl actionable">可行动</span>'
-        : r.worry_controllable === 'rumination'
-          ? '<span class="ctrl rumination">反复思虑</span>' : '';
+      var env = envSegments(r);
 
       html.push(
         '<div class="card">' +
@@ -258,16 +488,18 @@
             '<div class="card-meta">' +
               [r.weather, r.lunar_date ? '农历 ' + esc(r.lunar_date) : '', r.moon_phase]
                 .filter(function (x) { return x; }).join(' · ') +
+              '<button class="card-edit" data-date="' + esc(r.date) + '" type="button">✏️ 更新</button>' +
             '</div>' +
           '</div>' +
-          (r.worry ? '<div class="row"><div class="k">😟 担忧</div><div class="v">' + esc(r.worry) + '</div></div>' : '') +
-          (r.highlight ? '<div class="row"><div class="k">⭐ 亮点</div><div class="v">' + esc(r.highlight) + '</div></div>' : '') +
-          (r.tomorrow_plan ? '<div class="row"><div class="k">🎯 明日</div><div class="v">' + esc(r.tomorrow_plan) + '</div></div>' : '') +
-          (tags.length ? '<div class="row"><div class="k">🏷 标签</div><div class="v tags">' +
-            tags.map(function (t) { return '<span>' + esc(t) + '</span>'; }).join('') + ctrl + '</div></div>' : '') +
+          (env.length ? '<div class="env-line">' + esc(env.join(' · ')) + '</div>' : '') +
+          '<div class="row"><div class="k">📌 今日要点</div><div class="v">' + esc(dash(r.worry)) + '</div></div>' +
+          '<div class="row"><div class="k">⭐ 亮点</div><div class="v">' + esc(dash(r.highlight)) + '</div></div>' +
+          '<div class="row"><div class="k">🎯 明日</div><div class="v">' + esc(dash(r.tomorrow_plan)) + '</div></div>' +
+          '<div class="row"><div class="k">🔧 改进</div><div class="v">' + esc(dash(r.improve)) + '</div></div>' +
           (r.summary_line ? '<div class="summary">' + esc(r.summary_line) + '</div>' : '') +
           '<div class="stats">' +
-            '总分 <b>' + dash(s.total) + '</b> · 习惯 ' + dash(r.habits_done) +
+            '总分 <b>' + num(s.total) + '</b> · 习惯 ' + dash(r.habits_done) +
+            (r.submitted_at ? ' · 提交 ' + esc(r.submitted_at) : '') +
             (r.iso_week ? ' · ' + esc(r.iso_week) : '') +
             (r.season ? ' · ' + esc(r.season) : '') +
           '</div>' +
@@ -275,9 +507,22 @@
       );
     });
 
-    listEl.innerHTML = html.length
-      ? html.join('')
-      : '<div class="empty">没有匹配的日记</div>';
+    listEl.innerHTML = html.length ? html.join('') : emptyHtml();
+  }
+
+  /** Nothing matched: if a single day is selected and has no diary yet, offer
+   *  to write it (that day's form link is the same Diary row). */
+  function emptyHtml() {
+    if (selectedDay) {
+      var has = false;
+      for (var i = 0; i < rows.length; i++) if (rows[i].date === selectedDay) { has = true; break; }
+      if (!has) {
+        return '<div class="fill-card"><p>' + esc(selectedDay) + ' 还没有日记</p>' +
+          '<button class="btn btn-primary fill-btn" data-date="' + esc(selectedDay) + '" type="button">✍️ 填写这天</button>' +
+          '</div>';
+      }
+    }
+    return '<div class="empty">没有匹配的日记</div>';
   }
 
   function load() {
@@ -288,7 +533,9 @@
       .then(function (resp) { return resp.json(); })
       .then(function (payload) {
         rows = (payload && payload.diary) || (Array.isArray(payload) ? payload : []);
+        setPlanLink(payload && payload.weekly_plan_url);
         renderCalendar();
+        renderStreak();
         render();
       })
       .catch(function (err) {
@@ -298,10 +545,238 @@
       });
   }
 
+  /** Show the "open Weekly Plan" button only when the server has a URL for it
+   *  (local/.env WEEKLY_PLAN_URL — fetched once from the Web App ?view=links). */
+  function setPlanLink(url) {
+    var el = document.getElementById('f-plan');
+    if (url) {
+      el.href = url;
+      el.hidden = false;
+    } else {
+      el.hidden = true;
+    }
+  }
+
+  // ---- Today's schedule (Weekly grid, incl. synced calendar events) ----
+  var SCHEDULE_URL = API_URL.replace(/\/diary$/, '/schedule');
+  var scheduleEl = document.getElementById('schedule');
+
+  /** Merge consecutive 30-minute slots that carry the same task into one row. */
+  function mergeSlots(slots) {
+    var out = [];
+    (slots || []).forEach(function (s) {
+      var start = s.time;
+      var last = out[out.length - 1];
+      if (last && last.task === s.task && last.end === start) {
+        last.end = addMinutes(start, 30);
+      } else {
+        out.push({ start: start, end: addMinutes(start, 30), task: s.task, score: s.score });
+      }
+    });
+    return out;
+  }
+
+  function renderSchedule(data) {
+    if (!data || !data.ok) { scheduleEl.hidden = true; return; }
+    var merged = mergeSlots(data.slots);
+    var html = '<div class="sch-head"><span>📅 今日排程</span>' +
+      '<span class="sch-day">' + esc(data.day || '') + ' ' + esc(data.weekday || '') + '</span></div>';
+    if (merged.length) {
+      html += '<div class="sch-items">' + merged.map(function (m) {
+        var done = parseFloat(m.score) > 0 ? ' ✓' : '';
+        return '<div class="sch-item">' +
+          '<span class="sch-time">' + esc(m.start) + '–' + esc(m.end) + '</span>' +
+          '<span class="sch-task">' + esc(m.task) + done + '</span></div>';
+      }).join('') + '</div>';
+    } else {
+      html += '<div class="sch-empty">今天还没有排程（可在 Weekly 表格里安排，日历事件会自动同步进来）</div>';
+    }
+    if (merged.length && data.empty_slots && data.empty_slots.length) {
+      html += '<div class="sch-note">还有 ' + data.empty_slots.length + ' 个 30 分钟时段没安排</div>';
+    }
+    scheduleEl.innerHTML = html;
+    scheduleEl.hidden = false;
+  }
+
+  function loadSchedule() {
+    fetch(SCHEDULE_URL)
+      .then(function (resp) { return resp.json(); })
+      .then(renderSchedule)
+      .catch(function () { scheduleEl.hidden = true; });  // the panel is optional
+  }
+
+  // ---- Editor: writes through this server to the Web App, i.e. to the very
+  //      same Diary sheet row the Telegram/Google-Form entry updates. ----
+  var REFRESH_URL = API_URL.replace(/\/diary$/, '/refresh');
+  var editorEl = document.getElementById('editor');
+  var edDate = document.getElementById('ed-date');
+  var edMoodBox = document.getElementById('ed-mood');
+  var edWorry = document.getElementById('ed-worry');
+  var edHighlight = document.getElementById('ed-highlight');
+  var edPlan = document.getElementById('ed-plan');
+  var edImprove = document.getElementById('ed-improve');
+  var edErr = document.getElementById('ed-err');
+  var edNote = document.getElementById('ed-note');
+  var edSave = document.getElementById('ed-save');
+  var toastEl = document.getElementById('toast');
+
+  var editMood = 3;
+  var saving = false;
+  var toastTimer = 0;
+
+  MOOD_EMOJI.forEach(function (emoji, i) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = emoji;
+    b.title = (i + 1) + '/5';
+    b.addEventListener('click', function () { setEditMood(i + 1); });
+    edMoodBox.appendChild(b);
+  });
+
+  function setEditMood(n) {
+    editMood = n;
+    for (var i = 0; i < edMoodBox.children.length; i++) {
+      edMoodBox.children[i].className = (i + 1 === n) ? 'on' : '';
+    }
+  }
+
+  function findRow(date) {
+    for (var i = 0; i < rows.length; i++) if (rows[i].date === date) return rows[i];
+    return null;
+  }
+
+  function toast(msg) {
+    toastEl.textContent = msg;
+    toastEl.className = 'show';
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toastEl.className = ''; }, 2800);
+  }
+
+  function updateEditorHint() {
+    var r = findRow(edDate.value);
+    edNote.textContent = r
+      ? (r.submitted_at ? '首次提交 ' + r.submitted_at + ' · ' : '') + '保存将更新这一行'
+      : '新的一天 · 保存将新建一行';
+  }
+
+  function openEditor(date) {
+    var d = date || todayISO();
+    var r = findRow(d);
+    edDate.value = d;
+    edWorry.value = r ? (r.worry || '') : '';
+    edHighlight.value = r ? (r.highlight || '') : '';
+    edPlan.value = r ? (r.tomorrow_plan || '') : '';
+    edImprove.value = r ? (r.improve || '') : '';
+    setEditMood(r && parseInt(r.mood, 10) ? parseInt(r.mood, 10) : 3);
+    edErr.hidden = true;
+    edErr.textContent = '';
+    updateEditorHint();
+    document.getElementById('editor-title').textContent = r ? '✏️ 更新 ' + d : '✍️ 写日记';
+    editorEl.hidden = false;
+    edWorry.focus();
+  }
+
+  function closeEditor() {
+    if (!saving) editorEl.hidden = true;
+  }
+
+  function saveEditor() {
+    if (saving) return;
+    var d = edDate.value;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+      edErr.hidden = false;
+      edErr.textContent = '请先选择日期';
+      return;
+    }
+    saving = true;
+    edSave.disabled = true;
+    edSave.textContent = '保存中…';
+    edErr.hidden = true;
+
+    fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        date: d,
+        mood: editMood,
+        worry: edWorry.value,
+        highlight: edHighlight.value,
+        tomorrow_plan: edPlan.value,
+        improve: edImprove.value
+      })
+    })
+      .then(function (resp) {
+        return resp.json().then(function (j) { return { status: resp.status, body: j }; });
+      })
+      .then(function (res) {
+        if (!res.body || !res.body.ok) {
+          throw new Error((res.body && res.body.error) || ('HTTP ' + res.status));
+        }
+        var saved = res.body.diary;
+        if (saved) {
+          var idx = -1;
+          for (var i = 0; i < rows.length; i++) if (rows[i].date === saved.date) { idx = i; break; }
+          if (idx >= 0) rows[idx] = saved; else rows.push(saved);
+          rows.sort(function (a, b) { return a.date < b.date ? 1 : a.date > b.date ? -1 : 0; });
+        }
+        editorEl.hidden = true;
+        renderCalendar();
+        renderStreak();
+        render();
+        toast((res.body.created ? '已新建 ' : '已更新 ') + d + ' 的日记');
+      })
+      .catch(function (err) {
+        edErr.hidden = false;
+        edErr.textContent = '保存失败：' + err.message;
+      })
+      .then(function () {
+        saving = false;
+        edSave.disabled = false;
+        edSave.textContent = '保存';
+      });
+  }
+
+  function syncNow() {
+    var btn = document.getElementById('f-sync');
+    btn.disabled = true;
+    btn.textContent = '同步中…';
+    fetch(REFRESH_URL, { method: 'POST' })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j.ok) throw new Error(j.error || '同步失败');
+        toast('已从 Google 表格同步 ' + j.rows + ' 行');
+        load();
+      })
+      .catch(function (err) { toast('同步失败：' + err.message); })
+      .then(function () {
+        btn.disabled = false;
+        btn.textContent = '🔄 同步';
+      });
+  }
+
   fromEl.addEventListener('change', render);
   toEl.addEventListener('change', render);
   moodEl.addEventListener('change', render);
   textEl.addEventListener('input', render);
+
+  document.getElementById('cal-write').addEventListener('click', function () { openEditor(todayISO()); });
+  document.getElementById('f-sync').addEventListener('click', syncNow);
+  document.getElementById('ed-close').addEventListener('click', closeEditor);
+  document.getElementById('ed-cancel').addEventListener('click', closeEditor);
+  edDate.addEventListener('change', updateEditorHint);
+  edSave.addEventListener('click', saveEditor);
+  editorEl.addEventListener('click', function (e) { if (e.target === editorEl) closeEditor(); });
+  document.addEventListener('keydown', function (e) {
+    if (editorEl.hidden) return;
+    if (e.key === 'Escape') closeEditor();
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) saveEditor();
+  });
+  listEl.addEventListener('click', function (e) {
+    var t = e.target;
+    if (!t || !t.closest) return;
+    var btn = t.closest('.card-edit, .fill-btn');
+    if (btn) openEditor(btn.getAttribute('data-date'));
+  });
 
   document.getElementById('cal-grid').addEventListener('click', onCalClick);
   document.getElementById('cal-prev').addEventListener('click', function () {
@@ -324,6 +799,7 @@
   buildCalendar();
   buildMoodOptions();
   load();
+  loadSchedule();
 })();
 </script>
 </body>

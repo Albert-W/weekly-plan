@@ -109,9 +109,14 @@ function sendTelegramMessage_(text, parseMode) {
 }
 
 /**
- * Build the morning recap message (Telegram HTML). Always returns
- * content — the quest section is present even with no yesterday data.
- * Mirrors buildMorningEmail_ but uses Telegram's limited HTML subset.
+ * Build the morning message (Telegram HTML). Since the diary became a morning
+ * plan (2026-10-15) this single ~8:30 message carries both the recap and the
+ * "今日要点" prompt, so there is one morning notification instead of two.
+ *
+ * The diary is written in the morning, so the previous day's row is what is
+ * actionable now: its `明日计划` was written FOR today, and its 今日要点 is
+ * yesterday's focus. Links go at the bottom (thumb-reachable).
+ *
  * @returns {string}
  */
 function buildMorningTelegramMessage_() {
@@ -131,7 +136,7 @@ function buildMorningTelegramMessage_() {
   const bonus = CONFIG.QUEST.BONUS_MULTIPLIER;
 
   const lines = [];
-  lines.push('📅 <b>Weekly Plan — Morning Recap</b>');
+  lines.push('🌅 <b>Weekly Plan — Morning Plan</b>');
   lines.push('<i>' + esc(tLabel) + '</i>');
   lines.push('');
 
@@ -147,13 +152,15 @@ function buildMorningTelegramMessage_() {
   }
   lines.push('');
 
-  // ---- Last night's diary ----
+  // ---- Yesterday's diary: its 明日计划 was written FOR today ----
   const diary = getDiaryForDate_(formatDateYYYYMMDD(yDate));
   if (diary) {
-    lines.push('✍️ <b>Last night\'s diary</b>');
-    lines.push('😟 Worry: <b>' + esc(truncateDiaryText_(diary.worry)) + '</b>');
-    lines.push('🎯 Today\'s plan: <b>' + esc(truncateDiaryText_(diary.tomorrow_plan)) + '</b>');
+    lines.push('🎯 昨天为今天定的计划: <b>' + esc(truncateDiaryText_(diary.tomorrow_plan)) + '</b>');
+    lines.push('📌 昨天写的今日要点: ' + esc(truncateDiaryText_(diary.worry)));
+  } else {
+    lines.push('<i>昨天没有日记 — 今天开始记第一条吧</i>');
   }
+  lines.push('');
 
   // ---- Today's quest section ----
   const qHabit = (quest && quest.habitName) || '—';
@@ -197,7 +204,59 @@ function buildMorningTelegramMessage_() {
     }
   }
 
+  // ---- Action links (plain text: the prefill URL is &-heavy and would be
+  //      mangled by HTML mode; and the sheet id is harmless to expose). ----
+  const formUrl = diaryFormUrl_();
+  const sheetUrl = dailySheetUrl_();
+  lines.push('');
+  if (formUrl) {
+    lines.push('✍️ <b>写今日要点</b>（已预填今天）');
+    lines.push(formUrl);
+  }
+  if (sheetUrl) {
+    lines.push('📊 <b>打开 Weekly Plan</b>');
+    lines.push(sheetUrl);
+  }
+
   return lines.join('\n');
+}
+
+/**
+ * Prefilled diary form URL for today, or '' when the form isn't set up.
+ * @returns {string}
+ */
+function diaryFormUrl_() {
+  const formId = PropertiesService.getScriptProperties().getProperty(CONFIG.DIARY.FORM_ID_PROP);
+  if (!formId) return '';
+  try {
+    return buildDiaryPrefilledUrl_(formId);
+  } catch (e) {
+    Logger.log('diaryFormUrl_: ' + (e && e.message ? e.message : e));
+    return '';
+  }
+}
+
+/**
+ * The bound spreadsheet's URL — the "open Weekly Plan" link for the morning
+ * message. getSpreadsheet_() carries the openById fallback, so this also works
+ * in a time-driven (no active spreadsheet) context. Falls back to building the
+ * URL from the id if getUrl() isn't available under the current OAuth scopes.
+ * @returns {string}
+ */
+function dailySheetUrl_() {
+  try {
+    const ss = getSpreadsheet_();
+    try {
+      const url = ss.getUrl();
+      if (url) return url;
+    } catch (e) {
+      // fall through to the constructed URL
+    }
+    return 'https://docs.google.com/spreadsheets/d/' + ss.getId() + '/edit';
+  } catch (e) {
+    Logger.log('dailySheetUrl_: ' + (e && e.message ? e.message : e));
+    return '';
+  }
 }
 
 /**

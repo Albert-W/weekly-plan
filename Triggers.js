@@ -236,9 +236,11 @@ function deleteTaskPrompt_() {
  * @returns {string} status message
  */
 function installTriggers() {
-  // 'mealStory' stays in the deletion list even though the feature was
-  // removed, so a re-run of this installer purges any stale triggers still
-  // installed from before the removal.
+  // The managed list is also a PURGE list: handlers listed here are deleted on
+  // every run, so keeping an entry after its feature is folded away is how
+  // stale triggers from earlier versions get cleaned up. 'mealStory' (removed
+  // feature) and 'diaryReminder' (folded into the 8:30 morning message,
+  // 2026-10-15) are here for exactly that reason.
   const managed = ['handleEdit', 'dailyMaintenance', 'morningTelegram', 'mealStory', 'refreshTimeHighlight', 'diaryReminder'];
   const triggers = ScriptApp.getProjectTriggers();
   for (let i = 0; i < triggers.length; i++) {
@@ -249,10 +251,13 @@ function installTriggers() {
 
   ScriptApp.newTrigger('handleEdit').forSpreadsheet(getSpreadsheet_()).onEdit().create();
   ScriptApp.newTrigger('dailyMaintenance').timeBased().everyDays(1).atHour(5).create();
+
+  // One morning message (~8:30): recap + today's quest + the diary link.
   ScriptApp.newTrigger('morningTelegram')
     .timeBased()
     .everyDays(1)
     .atHour(CONFIG.TELEGRAM.SEND_HOUR)
+    .nearMinute(CONFIG.TELEGRAM.SEND_MINUTE)
     .create();
 
   // Update the current-time-row highlight every 5 min so it stays accurate
@@ -260,22 +265,17 @@ function installTriggers() {
   // for 30-min time slots (~288 executions/day, well within quota).
   ScriptApp.newTrigger('refreshTimeHighlight').timeBased().everyMinutes(5).create();
 
-  // Evening diary reminder (~21:30, ±15 min window). The onFormSubmit
+  // The evening diary reminder trigger is deliberately NOT created any more
+  // (its content is folded into morningTelegram); "Send diary reminder now"
+  // still works from the menu via sendDiaryReminderFromUI. The onFormSubmit
   // trigger for handleDiarySubmit is installed separately by setUpDiary.
-  ScriptApp.newTrigger('diaryReminder')
-    .timeBased()
-    .everyDays(1)
-    .atHour(CONFIG.DIARY.SEND_HOUR)
-    .nearMinute(CONFIG.DIARY.SEND_MINUTE)
-    .create();
 
   // onSelectionChange (control buttons) is a SIMPLE trigger — it fires
   // automatically by name and cannot/should not be created here.
   const msg =
-    'Triggers installed: live edits + daily maintenance (~5am) + Telegram recap (~' +
-    CONFIG.TELEGRAM.SEND_HOUR + 'am) + diary reminder (~' +
-    CONFIG.DIARY.SEND_HOUR + ':' + String(CONFIG.DIARY.SEND_MINUTE).padStart(2, '0') +
-    '). Control buttons work automatically.';
+    'Triggers installed: live edits + daily maintenance (~5am) + morning message (~' +
+    CONFIG.TELEGRAM.SEND_HOUR + ':' + String(CONFIG.TELEGRAM.SEND_MINUTE).padStart(2, '0') +
+    ', recap + diary link). Control buttons work automatically.';
   toast_(msg, 'Weekly Plan');
   return msg;
 }
@@ -333,9 +333,9 @@ function initialize() {
 /**
  * Time-driven daily trigger entry point (~5am). Runs init even when no
  * one has the sheet open, so archiving/reset and highlights stay current,
- * and syncs the calendar. The morning recap itself is sent separately by
- * the `morningTelegram` trigger (~CONFIG.TELEGRAM.SEND_HOUR) so it lands
- * when the user actually starts their day.
+ * and syncs the calendar. The morning message (recap + diary link) is sent
+ * separately by the `morningTelegram` trigger (~CONFIG.TELEGRAM.SEND_HOUR:
+ * SEND_MINUTE) so it lands when the user actually starts their day.
  */
 function dailyMaintenance() {
   runDailyInitCore_();
@@ -345,24 +345,16 @@ function dailyMaintenance() {
 }
 
 /**
- * Time-driven morning trigger (~CONFIG.TELEGRAM.SEND_HOUR). Sends the
- * Telegram morning recap once per day (deduped + enable-gated inside
- * sendMorningTelegram_). The quest self-heals via ensureDailyQuest_, so
- * this stands on its own even if dailyMaintenance hasn't run yet.
+ * Time-driven morning trigger (~8:30). Sends the one morning message —
+ * yesterday's score + the plan yesterday's diary set for today + today's
+ * quest + the prefilled 今日要点 form link + the Weekly Plan link — once per
+ * day (deduped + enable-gated inside sendMorningTelegram_). The quest
+ * self-heals via ensureDailyQuest_, so this stands on its own even if
+ * dailyMaintenance hasn't run yet.
  */
 function morningTelegram() {
   safeInit_('Morning Telegram skipped', function () {
     sendMorningTelegram_(false);
-  });
-}
-
-/**
- * Time-driven evening trigger (~21:30). Sends the prefilled diary form link
- * to Telegram once per day (deduped + enable-gated inside sendDiaryReminder_).
- */
-function diaryReminder() {
-  safeInit_('Diary reminder skipped', function () {
-    sendDiaryReminder_(false);
   });
 }
 

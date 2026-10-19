@@ -2,7 +2,11 @@
  * Web App 入口 — 部署为 GAS Web App（执行身份：我，访问权限：任何人）。
  *
  * GET  ?k=<auth> → 返回每日快照 JSON（供 Mac 定时拉取）
- * POST ?k=<auth> + JSON body → 执行操作（习惯打卡等）
+ * POST ?k=<auth> + JSON body → 执行操作（习惯打卡、日记保存等）
+ *
+ * POST action=diary 是日记网站（local/DiaryReader.html）内联编辑器的写入口：
+ * 它走 saveDiaryFromWeb_ → upsertDiaryRow_，和 Telegram 推送的 Google 表单
+ * 提交走的是同一个写路径，因此两种入口改的是同一张 Diary 表的同一行（按日期）。
  *
  * 要求 Utils.js 的 getSpreadsheet_() 已加入 openById fallback：
  *   PropertiesService.getScriptProperties().setProperty('spreadsheetId', '<id>')
@@ -25,6 +29,17 @@ function auth_(e) {
   return !expected || key === expected;
 }
 
+/**
+ * 严格鉴权：syncAuthKey 未设置时直接拒绝。用于承载私人内容的入口
+ * （日记读取 ?view=diary、日记保存 action=diary）——宽松的 auth_() 会在
+ * key 未配置时放行，不能用于私人内容。
+ */
+function strictAuth_(e) {
+  var expected = (PropertiesService.getScriptProperties().getProperty(CONFIG.SYNC.AUTH_KEY_PROP) || '');
+  var key = (e && e.parameter && e.parameter.k) || '';
+  return !!expected && key === expected;
+}
+
 // ---- GET: 每日快照 ----
 
 function doGet(e) {
@@ -33,11 +48,63 @@ function doGet(e) {
   if (e && e.parameter && e.parameter.view === 'diary') {
     return handleDiaryView_(e);
   }
+  if (e && e.parameter && e.parameter.view === 'links') {
+    return handleLinksView_(e);
+  }
+  if (e && e.parameter && e.parameter.view === 'schedule') {
+    return handleScheduleView_(e);
+  }
   if (!auth_(e)) return unauth_();
   try {
     var snapshot = buildSnapshot_();
     snapshot.ok = true;
     return json_(snapshot);
+  } catch (err) {
+    return json_({ ok: false, error: String(err && err.message ? err.message : err) });
+  }
+}
+
+/**
+ * ?view=links&k=KEY — the URLs the local reader needs (the Weekly Plan sheet
+ * link on the diary page). Strict auth, same as the diary view: it identifies
+ * the user's document. The local server caches it in local/.env, so a page
+ * load never waits on Apps Script.
+ * @param {GoogleAppsScript.Events.DoGet} e
+ * @returns {GoogleAppsScript.Content.TextOutput}
+ */
+function handleLinksView_(e) {
+  if (!strictAuth_(e)) return unauth_();
+  try {
+    return json_({ ok: true, weekly_plan_url: dailySheetUrl_() });
+  } catch (err) {
+    return json_({ ok: false, error: String(err && err.message ? err.message : err) });
+  }
+}
+
+/**
+ * ?view=schedule&k=KEY — today's timetable for the diary page's "今日排程"
+ * panel. readTodayGrid_ reads the Weekly grid's column for today, and
+ * Calendar.js writes synced meetings into those same task cells, so planned
+ * blocks and calendar events come from one source.
+ *
+ * Deliberately light (no quest/boss/xp reads): the diary page fetches it on
+ * every load, and the local server caches the response for a few minutes.
+ * @param {GoogleAppsScript.Events.DoGet} e
+ * @returns {GoogleAppsScript.Content.TextOutput}
+ */
+function handleScheduleView_(e) {
+  if (!strictAuth_(e)) return unauth_();
+  try {
+    var tz = getSpreadsheet_().getSpreadsheetTimeZone();
+    var now = new Date();
+    var grid = readTodayGrid_();
+    return json_({
+      ok: true,
+      day: Utilities.formatDate(now, tz, 'yyyy-MM-dd'),
+      weekday: Utilities.formatDate(now, tz, 'EEEE'),
+      slots: grid.slots,             // [{ time, task, score }]
+      empty_slots: grid.empty_slots  // ['09:00', ...] unplanned 30-min slots
+    });
   } catch (err) {
     return json_({ ok: false, error: String(err && err.message ? err.message : err) });
   }
@@ -53,9 +120,7 @@ function doGet(e) {
  * @returns {GoogleAppsScript.Content.TextOutput}
  */
 function handleDiaryView_(e) {
-  var expected = (PropertiesService.getScriptProperties().getProperty(CONFIG.SYNC.AUTH_KEY_PROP) || '');
-  var key = (e && e.parameter && e.parameter.k) || '';
-  if (!expected || key !== expected) return unauth_();
+  if (!strictAuth_(e)) return unauth_();
 
   try {
     var p = (e && e.parameter) || {};
@@ -84,9 +149,22 @@ function handleDiaryView_(e) {
 // ---- POST: 操作入口 ----
 
 function doPost(e) {
-  if (!auth_(e)) return unauth_();
+  var params;
   try {
-    var params = JSON.parse(e.postData.contents);
+    params = JSON.parse((e && e.postData && e.postData.contents) || '{}');
+  } catch (err) {
+    return json_({ ok: false, error: 'bad JSON body' });
+  }
+
+  try {
+    // Diary saves carry private content → strict auth (refuse when the key is
+    // unset), the same rule as the ?view=diary read.
+    if (params.action === 'diary') {
+      if (!strictAuth_(e)) return unauth_();
+      return handleDiarySave_(params);
+    }
+
+    if (!auth_(e)) return unauth_();
     // { action: "habit", name: "健身" }
     if (params.action === 'habit' && params.name) {
       return handleHabitCheckin_(params.name);
@@ -97,6 +175,23 @@ function doPost(e) {
   }
 }
 
+// ---- 日记保存（网站内联编辑器） ----
+
+/**
+ * POST action=diary — 日记网站里点“保存”走这里。写入委托给
+ * saveDiaryFromWeb_（→ upsertDiaryRow_），与 Google 表单提交共用同一条写
+ * 路径，所以同一天无论是表单还是网站改的，都是 Diary 表的同一行。
+ * Body: { action:'diary', date:'YYYY-MM-DD', mood:1-5, worry, highlight,
+ *         tomorrow_plan, improve }
+ * @param {Object} params
+ * @returns {GoogleAppsScript.Content.TextOutput}
+ */
+function handleDiarySave_(params) {
+  var res = saveDiaryFromWeb_(params || {});
+  if (!res.ok) return json_({ ok: false, error: res.error });
+  return json_({ ok: true, action: 'diary', created: res.created, row: res.row });
+}
+
 // ---- 习惯打卡 ----
 
 function handleHabitCheckin_(name) {
@@ -104,7 +199,8 @@ function handleHabitCheckin_(name) {
   if (!sheet) return json_({ ok: false, error: 'Habits sheet not found' });
 
   var lastRow = getLastHabitRow_();
-  var names = sheet.getRange(CONFIG.HABITS.DATA_START_ROW, 1, lastRow - CONFIG.HABITS.DATA_START_ROW + 1, 1)
+  var nameCol = columnLetterToIndex(CONFIG.HABITS.COLUMNS.HABIT_NAME) + 1; // B
+  var names = sheet.getRange(CONFIG.HABITS.DATA_START_ROW, nameCol, lastRow - CONFIG.HABITS.DATA_START_ROW + 1, 1)
     .getValues().flat();
   for (var i = 0; i < names.length; i++) {
     if (String(names[i]).trim() === name) {
@@ -215,14 +311,17 @@ function readHabits_(todayDate) {
   var dataStart = H.DATA_START_ROW;
   var numHabits = lastRow - dataStart + 1;
 
-  // 读名称 (A 列) 和分数 (C 列)
-  var nameRange = sheet.getRange(dataStart, 1, numHabits, 1);
-  var scoreRange = sheet.getRange(dataStart, 3, numHabits, 1);
-  var names = nameRange.getValues().flat();
-  var scores = scoreRange.getValues().flat();
+  // 读条件 (A 列)、反应/名称 (B 列) 和分数 (D 列)
+  var cueCol = columnLetterToIndex(H.COLUMNS.HABIT_CUE) + 1;      // A
+  var nameCol = columnLetterToIndex(H.COLUMNS.HABIT_NAME) + 1;    // B
+  var scoreCol = columnLetterToIndex(H.COLUMNS.WEIGHT) + 1;       // D
+  var cues = sheet.getRange(dataStart, cueCol, numHabits, 1).getValues().flat();
+  var names = sheet.getRange(dataStart, nameCol, numHabits, 1).getValues().flat();
+  var scores = sheet.getRange(dataStart, scoreCol, numHabits, 1).getValues().flat();
 
   // 找今天在 14 天窗口中的位置
   var dayIndex = findHabitsDayColumnIndex_(sheet, todayDate);
+  var dayStartCol = columnLetterToIndex(H.COLUMNS.DAY_START) + 1;  // E
 
   var habits = [];
   for (var i = 0; i < numHabits; i++) {
@@ -231,8 +330,8 @@ function readHabits_(todayDate) {
 
     var doneToday = false;
     if (dayIndex >= 0) {
-      // 今天的完成列 (D=4 → dayIndex=0)
-      var doneCol = 4 + dayIndex; // 1-based column index
+      // 今天的完成列 (E=5 → dayIndex=0)
+      var doneCol = dayStartCol + dayIndex; // 1-based column index
       var cellVal = sheet.getRange(dataStart + i, doneCol).getValue();
       doneToday = !!(cellVal && parseFloat(cellVal) > 0);
     }
@@ -242,6 +341,7 @@ function readHabits_(todayDate) {
 
     habits.push({
       name: name,
+      cue: String(cues[i] == null ? '' : cues[i]).trim(),
       weight: parseFloat(scores[i]) || 0,
       streak_days: streakDays,
       done_today: doneToday
@@ -284,8 +384,9 @@ function findHabitsDayColumnIndex_(sheet, todayDate) {
 
 function _calcStreak(sheet, row, dayIndex) {
   if (dayIndex < 0) return 0;
+  var start = columnLetterToIndex(CONFIG.HABITS.COLUMNS.DAY_START) + 1; // E
   var count = 0;
-  for (var col = 4 + dayIndex; col >= 4; col--) {
+  for (var col = start + dayIndex; col >= start; col--) {
     var val = sheet.getRange(row, col).getValue();
     if (val && parseFloat(val) > 0) {
       count++;

@@ -5,13 +5,19 @@
 --   2. enrich_diary.py — environment (weather / weekday / lunar / moon phase) + LLM
 --                        fields, once the diary's day has ended. `enriched_at`
 --                        marks completion so a re-run skips finished rows.
+--
+-- NOTE: `CREATE TABLE IF NOT EXISTS` only shapes a brand-new DB. Column changes
+-- (added `improve`, the weather/air extras; dropped `tags`,
+-- `worry_controllable`) are applied to existing DBs by the ensure_columns()
+-- helper in pull_diary.py / enrich_diary.py / serve.py.
 CREATE TABLE IF NOT EXISTS diary (
   date          TEXT PRIMARY KEY,               -- 'YYYY-MM-DD'
   -- Form inputs (first pull)
   mood          INTEGER,                        -- 1..5
-  worry         TEXT DEFAULT '',
+  worry         TEXT DEFAULT '',                -- shown as "📌 今日要点"
   highlight     TEXT DEFAULT '',
   tomorrow_plan TEXT DEFAULT '',
+  improve       TEXT DEFAULT '',                -- 有什么可以改进的地方吗？
   submitted_at  TEXT,
   updated_at    TEXT,
   -- System snapshot (from the GAS ?view=diary payload join)
@@ -27,10 +33,16 @@ CREATE TABLE IF NOT EXISTS diary (
   moon_phase    TEXT,                           -- e.g. '盈凸月'
   weather       TEXT,                           -- human summary, e.g. '晴 22°C'
   weather_raw   TEXT,                           -- optional detailed JSON from Open-Meteo
-  -- LLM-derived (Gemini)
-  tags          TEXT,                           -- JSON array of 1-3 Chinese tags
-  worry_controllable TEXT,                      -- 'actionable' | 'rumination' | NULL
+  precip_prob   INTEGER,                        -- % chance of rain (daily max); NULL in the archive feed
+  feels_min     REAL,                           -- apparent temperature min, °C
+  feels_max     REAL,                           -- apparent temperature max, °C
+  sunrise       TEXT,                           -- 'HH:MM' local
+  sunset        TEXT,                           -- 'HH:MM' local
+  aqi           INTEGER,                        -- European AQI, worst hour of the day
+  pm25          REAL,                           -- µg/m³, worst hour of the day
+  pollen        TEXT,                           -- JSON {"birch":n,"grass":n,"alder":n}; '{}' = measured, all zero
+  -- Historical: the LLM pass that wrote this was removed 2026-10-17 (cost)
   summary_line  TEXT,                           -- one-line Chinese summary
   -- Bookkeeping
-  enriched_at   TEXT                            -- ISO8601 when env+LLM were written
+  enriched_at   TEXT                            -- ISO8601 when the env pass completed
 );

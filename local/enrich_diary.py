@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
-"""Enrich local diary entries with environment + LLM fields.
+"""Enrich local diary entries with environment fields — no LLM, no API keys.
 
 Runs after a diary's day has ended. For each row where `enriched_at` is NULL:
   - weekday / ISO week / season            (stdlib)
   - Chinese lunar date                     (classic LUNAR_INFO table, 1900-2100)
   - moon phase                             (classic synodic-month formula)
-  - weather for that date                  (Open-Meteo HISTORICAL API, no key)
-  - tags / worry_controllable / summary    (local liteLLM proxy, OpenAI-compatible)
+  - weather for that date                  (Open-Meteo, no key)
 
-Pure Python stdlib (urllib + sqlite3). The LLM call goes to your local
-liteLLM proxy's OpenAI-compatible /v1/chat/completions endpoint — set
-LITELLM_URL / LITELLM_MODEL / LITELLM_API_KEY in the config below or via env.
+LLM fields were removed on request (2026-10-17: cost), after tags and
+worry_controllable (2026-10-15). There is no LLM call left in this pipeline at
+all — the only network calls are Open-Meteo. The `summary_line` COLUMN is kept
+(not dropped) so the summaries already generated stay on their rows; nothing
+writes it any more, and the reader hides the summary block when it is empty.
+
+Pure Python stdlib (urllib + sqlite3).
 
 Run on a schedule (e.g. daily after midnight):
     python3 enrich_diary.py
@@ -30,6 +33,8 @@ try:
 except Exception:  # pragma: no cover - import path differs in some runners
     dotenv = None
 
+from dbschema import ensure_columns  # noqa: E402 — shared column migrations
+
 # ---- Config (edit me in local/.env, NOT in this file) ----
 HERE = os.path.dirname(os.path.abspath(__file__))
 if dotenv:
@@ -39,10 +44,6 @@ DB_PATH = os.path.join(HERE, os.environ.get("DB_PATH", "bot.db"))
 LAT = float(os.environ.get("LAT", "53.3498"))       # Dublin; set to your city
 LON = float(os.environ.get("LON", "-6.2603"))
 WEATHER_TZ = os.environ.get("WEATHER_TZ", "Europe/Dublin")  # raw — urlencode encodes it
-# Local liteLLM proxy (OpenAI-compatible /v1/chat/completions).
-LITELLM_URL = os.environ.get("LITELLM_URL", "http://localhost:4000/v1/chat/completions")
-LITELLM_MODEL = os.environ.get("LITELLM_MODEL", "default")  # model your proxy exposes
-LITELLM_API_KEY = os.environ.get("LITELLM_API_KEY", "")    # proxy master key (in .env)
 
 SCHEMA_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "schema.sql")
 
@@ -173,39 +174,80 @@ def moon_phase_str(d):
 # same source phones/weather apps use, which always has the current day.
 # Past dates come from the ARCHIVE feed (archive-api.open-meteo.com). The
 # archive can 400 for a very recent day that isn't archived yet, in which
-# case we fall back to the forecast feed's `past_days` window.
+# case we fall back to the forecast feed's `past_days` window. The archive has
+# no precipitation probability (and no UV), so those columns stay NULL for past
+# days — that is a limitation of the upstream feed, not a bug here.
+
+DAILY_VARS = ",".join((
+    "weathercode", "temperature_2m_max", "temperature_2m_min",
+    "apparent_temperature_max", "apparent_temperature_min",
+    "precipitation_probability_max", "sunrise", "sunset",
+))
+
+
+def _round_or_none(v, nd=1):
+    return round(v, nd) if isinstance(v, (int, float)) else None
+
+
+def _int_or_none(v):
+    return int(round(v)) if isinstance(v, (int, float)) else None
+
+
+def _hhmm(iso):
+    """Open-Meteo '2026-10-17T07:55' → '07:55' (None when absent)."""
+    if isinstance(iso, str) and "T" in iso:
+        return iso.split("T", 1)[1][:5]
+    return None
+
 
 def _parse_daily(data, idx=0):
-    """Human summary + raw JSON from a /daily payload, picking index idx."""
-    daily = data.get("daily", {})
+    """Parse one day out of a /daily payload into the columns we store."""
+    daily = data.get("daily") or {}
 
     def at(key):
         v = daily.get(key)
-        return v[idx] if isinstance(v, list) and idx < len(v) else v
+        if isinstance(v, list):
+            return v[idx] if idx < len(v) else None
+        return v
 
     wc = at("weathercode")
     tmax = at("temperature_2m_max")
     tmin = at("temperature_2m_min")
     cond = WMO_CN.get(wc, "未知")
     if tmax is None:
-        return cond, None
-    if tmin is not None:
-        return "%s %s°C/%s°C" % (cond, round(tmin), round(tmax)), json.dumps(daily, ensure_ascii=False)
-    return "%s %s°C" % (cond, round(tmax)), json.dumps(daily, ensure_ascii=False)
+        weather = cond
+    elif tmin is not None:
+        weather = "%s %s°C/%s°C" % (cond, round(tmin), round(tmax))
+    else:
+        weather = "%s %s°C" % (cond, round(tmax))
+    return {
+        "weather": weather,
+        "weather_raw": json.dumps(daily, ensure_ascii=False),
+        "precip_prob": _int_or_none(at("precipitation_probability_max")),
+        "feels_min": _round_or_none(at("apparent_temperature_min")),
+        "feels_max": _round_or_none(at("apparent_temperature_max")),
+        "sunrise": _hhmm(at("sunrise")),
+        "sunset": _hhmm(at("sunset")),
+    }
 
 
 def weather_for(date_str):
     today = datetime.date.today().isoformat()
     base = {
         "latitude": LAT, "longitude": LON,
-        "daily": "temperature_2m_max,temperature_2m_min,weathercode",
+        "daily": DAILY_VARS,
         "timezone": WEATHER_TZ,
     }
 
     if date_str >= today:
-        qs = urllib.parse.urlencode(dict(base, forecast_days=1))
+        # The forecast feed's daily arrays start TODAY, so a future date (the
+        # editor lets you pick one) needs enough days and the right index —
+        # otherwise you'd silently label today's weather as tomorrow's.
+        days_ahead = (datetime.date.fromisoformat(date_str)
+                      - datetime.date.today()).days
+        qs = urllib.parse.urlencode(dict(base, forecast_days=days_ahead + 1))
         with urllib.request.urlopen("https://api.open-meteo.com/v1/forecast?" + qs, timeout=30) as resp:
-            return _parse_daily(json.load(resp))
+            return _parse_daily(json.load(resp), days_ahead)
 
     try:
         qs = urllib.parse.urlencode(dict(base, start_date=date_str, end_date=date_str))
@@ -224,50 +266,43 @@ def weather_for(date_str):
         return _parse_daily(data, idx)
 
 
-# ---- LLM (local liteLLM proxy, OpenAI-compatible) ----
+# ---- Air quality + pollen (Open-Meteo air-quality API, no key) ----
+# Hourly series for the diary's date, collapsed to the worst hour: for a plan
+# you want the peak, not the average. Works for past days too (the feed keeps a
+# few months of history), which matters because the batch run enriches
+# yesterday — a "current conditions only" call would never fire for it.
 
-def llm_analyze(d):
-    """Return (tags, worry_controllable, summary_line). tags is a list."""
-    prompt = (
-        "你是我的个人日记分析助手。分析下面这篇日记，只输出严格 JSON，不要任何多余文字：\n"
-        "{\"tags\": [\"标签1\", \"标签2\"], "
-        "\"worry_controllable\": \"actionable\" 或 \"rumination\", "
-        "\"summary_line\": \"一句话中文摘要\"}\n"
-        "tags 是 1-3 个中文主题标签（工作/健康/关系/金钱/成长/家庭 等）。"
-        "worry_controllable 判断：这条担忧是否有具体可执行的应对办法（填 actionable）"
-        "还是不可控的反复思虑（填 rumination）；若没有担忧就填 null。\n\n"
-        "日期：%s\n心情：%s/5\n担忧：%s\n亮点：%s\n明日计划：%s"
-        % (d["date"], d.get("mood"), d.get("worry") or "无",
-           d.get("highlight") or "无", d.get("tomorrow_plan") or "无")
-    )
-    body = {
-        "model": LITELLM_MODEL,
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.2,
+POLLEN_VARS = (("birch_pollen", "birch"), ("grass_pollen", "grass"), ("alder_pollen", "alder"))
+
+
+def air_for(date_str):
+    """{'aqi','pm25','pollen'} for that date, or None when the feed has nothing."""
+    qs = urllib.parse.urlencode({
+        "latitude": LAT, "longitude": LON, "timezone": WEATHER_TZ,
+        "hourly": "european_aqi,pm2_5," + ",".join(k for k, _ in POLLEN_VARS),
+        "start_date": date_str, "end_date": date_str,
+    })
+    with urllib.request.urlopen(
+            "https://air-quality-api.open-meteo.com/v1/air-quality?" + qs, timeout=30) as resp:
+        hourly = (json.load(resp).get("hourly") or {})
+    if not hourly.get("time"):
+        return None
+
+    def peak(key):
+        vals = [v for v in (hourly.get(key) or []) if isinstance(v, (int, float))]
+        return max(vals) if vals else None
+
+    pollen = {}
+    for key, name in POLLEN_VARS:
+        v = peak(key)
+        if v is not None and v > 0:
+            pollen[name] = round(v, 1)
+    return {
+        "aqi": _int_or_none(peak("european_aqi")),
+        "pm25": _round_or_none(peak("pm2_5")),
+        # '{}' means "measured, all zero" — distinct from None ("not measured").
+        "pollen": json.dumps(pollen, ensure_ascii=False),
     }
-    headers = {"Content-Type": "application/json"}
-    if LITELLM_API_KEY:
-        headers["Authorization"] = "Bearer " + LITELLM_API_KEY
-    req = urllib.request.Request(LITELLM_URL, data=json.dumps(body).encode("utf-8"),
-                                 headers=headers)
-    with urllib.request.urlopen(req, timeout=120) as resp:
-        data = json.load(resp)
-    content = data["choices"][0]["message"]["content"]
-    text = content.strip().strip("`")
-    if text.startswith("json"):
-        text = text[4:].strip()
-    try:
-        obj = json.loads(text)
-    except Exception:
-        # Fall back to the first balanced {...} block if the model added prose.
-        start = text.find("{")
-        end = text.rfind("}")
-        obj = json.loads(text[start:end + 1])
-    tags = obj.get("tags") or []
-    wc = obj.get("worry_controllable")
-    if wc not in ("actionable", "rumination"):
-        wc = None
-    return tags, wc, (obj.get("summary_line") or "")
 
 
 # ---- Main ----
@@ -282,34 +317,61 @@ def enrich_row(conn, r):
     lunar = lunar_date_str(d)
     moon = moon_phase_str(d)
 
-    weather = None
-    weather_raw = None
+    wx = {}
     try:
-        weather, weather_raw = weather_for(r["date"])
+        wx = weather_for(r["date"]) or {}
     except Exception as e:
         print("  weather failed for %s: %s" % (r["date"], e), file=sys.stderr)
 
-    tags = None
-    wc = None
-    summary = None
-    llm_ok = False
+    # Air + pollen are secondary: if this call fails the row is still stamped
+    # (below), so one flaky response can't block the day forever. Clear
+    # enriched_at by hand to force a retry for a specific date.
+    air = {}
     try:
-        tags, wc, summary = llm_analyze(r)
-        llm_ok = True
+        air = air_for(r["date"]) or {}
     except Exception as e:
-        print("  llm failed for %s: %s" % (r["date"], e), file=sys.stderr)
+        print("  air failed for %s: %s" % (r["date"], e), file=sys.stderr)
 
-    # Only mark enriched_at when the LLM pass succeeded — otherwise a later
-    # run retries it. Env fields above are still written either way.
+    # Stamp enriched_at only when the weather actually landed: Open-Meteo
+    # returns transient 5xx now and then, and stamping anyway would leave that
+    # day permanently weather-less (the batch run only picks up NULL rows).
+    # The env fields are deterministic, so re-writing them costs nothing.
     with conn:
         conn.execute(
             "UPDATE diary SET weekday=?, iso_week=?, season=?, lunar_date=?, moon_phase=?,"
-            " weather=?, weather_raw=?, tags=?, worry_controllable=?, summary_line=?,"
-            " enriched_at=? WHERE date=?",
-            (weekday, iso_week, season, lunar, moon, weather, weather_raw,
-             json.dumps(tags, ensure_ascii=False) if tags is not None else None,
-             wc, summary, now if llm_ok else None, r["date"]),
+            " weather=?, weather_raw=?, precip_prob=?, feels_min=?, feels_max=?,"
+            " sunrise=?, sunset=?, aqi=?, pm25=?, pollen=?, enriched_at=? WHERE date=?",
+            (weekday, iso_week, season, lunar, moon,
+             wx.get("weather"), wx.get("weather_raw"),
+             wx.get("precip_prob"), wx.get("feels_min"), wx.get("feels_max"),
+             wx.get("sunrise"), wx.get("sunset"),
+             air.get("aqi"), air.get("pm25"), air.get("pollen"),
+             now if wx.get("weather") is not None else None, r["date"]),
         )
+
+
+def enrich_one(date_str, db_path=None):
+    """Enrich one date right now; True if the row existed and ran.
+
+    The reader calls this after a save so today's card shows today's weather /
+    lunar / moon immediately instead of waiting for the 00:15 batch run. Weather
+    for a date >= today comes from the live forecast feed (see weather_for), so
+    this works for the current day. Callers treat it as best-effort.
+    """
+    conn = sqlite3.connect(db_path or DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        ensure_columns(conn)
+        r = conn.execute(
+            "SELECT date, mood, worry, highlight, tomorrow_plan, improve FROM diary WHERE date=?",
+            (date_str,),
+        ).fetchone()
+        if not r:
+            return False
+        enrich_row(conn, dict(r))
+        return True
+    finally:
+        conn.close()
 
 
 def main():
@@ -318,8 +380,9 @@ def main():
     try:
         with open(SCHEMA_PATH, "r", encoding="utf-8") as f:
             conn.executescript(f.read())
+        ensure_columns(conn)
         rows = conn.execute(
-            "SELECT date, mood, worry, highlight, tomorrow_plan FROM diary"
+            "SELECT date, mood, worry, highlight, tomorrow_plan, improve FROM diary"
             " WHERE enriched_at IS NULL ORDER BY date"
         ).fetchall()
         for r in rows:

@@ -370,7 +370,7 @@ function copyLinkToWeeklyCell_(targetRange) {
     var lastRow = getLastHabitRow_();
     var H = CONFIG.HABITS;
     if (lastRow >= H.DATA_START_ROW) {
-      var nameCol = columnLetterToIndex(H.COLUMNS.HABIT_NAME) + 1; // A -> 1
+      var nameCol = columnLetterToIndex(H.COLUMNS.HABIT_NAME) + 1; // B -> 2 (response)
       var habitNames = habitsSheet
         .getRange(H.DATA_START_ROW, nameCol, lastRow - H.DATA_START_ROW + 1, 1)
         .getValues();

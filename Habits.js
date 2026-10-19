@@ -2,25 +2,29 @@
  * Habits sheet logic (Google Sheets edition).
  *
  * Ported from src/taskpane/js/habits.js. Completion is recorded when the
- * habit's native checkbox (column B) is checked — see Triggers.gs onEdit
+ * habit's native checkbox (column C) is checked — see Triggers.gs onEdit
  * — instead of on cell selection. After recording, the checkbox is reset
  * so it behaves like a "mark done" button. Streak math is unchanged:
  *   weightedScore = base * 1.1 ^ streak
  */
 
 /**
- * 1-based index of the last habit row (column A), or DATA_START_ROW - 1.
+ * 1-based index of the last habit row (response column B), or
+ * DATA_START_ROW - 1. A row only counts as a habit when it has a
+ * response, so a cue typed on its own does not extend the range.
  * @returns {number}
  */
 function getLastHabitRow_() {
   const sheet = getSheetByName_(CONFIG.HABITS_SHEET);
   if (!sheet) return CONFIG.HABITS.DATA_START_ROW - 1;
-  return Math.max(getLastRowInColumn_(sheet, 1), CONFIG.HABITS.DATA_START_ROW - 1);
+  const nameCol = columnLetterToIndex(CONFIG.HABITS.COLUMNS.HABIT_NAME) + 1; // B -> 2
+  return Math.max(getLastRowInColumn_(sheet, nameCol), CONFIG.HABITS.DATA_START_ROW - 1);
 }
 
 /**
- * 1-based row of a habit by name (column A), or -1 when not found.
- * Shared by Setup (ensureDiaryHabit_) and Diary (processPendingDiaryHabits_).
+ * 1-based row of a habit by its response name (column B), or -1 when not
+ * found. Shared by Setup (ensureDiaryHabit_) and Diary
+ * (processPendingDiaryHabits_).
  * @param {string} name
  * @returns {number}
  */
@@ -31,7 +35,10 @@ function findHabitRowByName_(name) {
   const H = CONFIG.HABITS;
   const last = getLastHabitRow_();
   if (last < H.DATA_START_ROW) return -1;
-  const vals = sheet.getRange(H.DATA_START_ROW, 1, last - H.DATA_START_ROW + 1, 1).getValues();
+  const nameCol = columnLetterToIndex(H.COLUMNS.HABIT_NAME) + 1; // B -> 2
+  const vals = sheet
+    .getRange(H.DATA_START_ROW, nameCol, last - H.DATA_START_ROW + 1, 1)
+    .getValues();
   for (let i = 0; i < vals.length; i++) {
     if (String(vals[i][0]).trim() === String(name)) return H.DATA_START_ROW + i;
   }
@@ -54,6 +61,10 @@ function initializeHabitsSheet() {
   const sheet = getSheetByName_(CONFIG.HABITS_SHEET);
   if (!sheet) return;
 
+  // Self-heal an older single-name layout (A = "Habit", B = checkbox) by
+  // inserting the cue column once, so habit names land in B. No-op after.
+  migrateHabitsCueColumn_(sheet);
+
   let dayIndex = findHabitsDayIndex(sheet);
   if (dayIndex < 0) {
     refreshHabitsDatesCore_(sheet);
@@ -71,7 +82,7 @@ function initializeHabitsSheet() {
 }
 
 /**
- * Clear the green "done" fill from the habit-name column (A) for every
+ * Clear the green "done" fill from the response column (B) for every
  * habit row, so a new day starts visually fresh.
  * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
  */
@@ -79,7 +90,7 @@ function clearHabitDoneColors_(sheet) {
   const H = CONFIG.HABITS;
   const lastRow = getLastHabitRow_();
   if (lastRow < H.DATA_START_ROW) return;
-  const nameCol = columnLetterToIndex(H.COLUMNS.HABIT_NAME) + 1; // A -> 1
+  const nameCol = columnLetterToIndex(H.COLUMNS.HABIT_NAME) + 1; // B -> 2
   sheet
     .getRange(H.DATA_START_ROW, nameCol, lastRow - H.DATA_START_ROW + 1, 1)
     .setBackground(CONFIG.COLORS.CLEAR);
@@ -283,7 +294,18 @@ function recordHabitDone(row, date) {
 }
 
 /**
- * Sort habit rows by weight (column C) descending.
+ * Sort habit rows by weight (column D) descending, keeping the current
+ * relative order for equal weights (a stable sort). The whole row — cue (A)
+ * through Total (S) — moves together.
+ *
+ * Range.sort gives no guarantee about the order of equal keys, so the
+ * desired position of every row is computed here (weight desc, then current
+ * order) and written into a scratch column just right of the table; one
+ * native sort by that unique position then produces exactly that order.
+ * Sorting natively (rather than rewriting values) keeps checkbox state,
+ * hyperlinks, the green "done" fill, quest highlights and cell formats
+ * attached to their habit.
+ *
  * @returns {string} status message
  */
 function sortHabits() {
@@ -296,12 +318,50 @@ function sortHabits() {
   const lastRow = getLastHabitRow_();
   if (lastRow < H.DATA_START_ROW) return 'No habits to sort.';
 
-  const weightCol = columnLetterToIndex(H.COLUMNS.WEIGHT) + 1; // C -> 3
-  const lastCol = columnLetterToIndex(H.COLUMNS.TOTAL_COUNT) + 1; // R
-  sheet
-    .getRange(H.DATA_START_ROW, 1, lastRow - H.DATA_START_ROW + 1, lastCol)
-    .sort({ column: weightCol, ascending: false });
+  const start = H.DATA_START_ROW;
+  const rows = lastRow - start + 1;
+  const firstCol = columnLetterToIndex(H.COLUMNS.HABIT_CUE) + 1; // A -> 1
+  const weightCol = columnLetterToIndex(H.COLUMNS.WEIGHT) + 1; // D -> 4
+  const lastDataCol = columnLetterToIndex(H.COLUMNS.TOTAL_COUNT) + 1; // S -> 19
 
-  toast_('Habits sorted by weight.', 'Weekly Plan');
-  return 'Habits sorted by weight.';
+  // Scratch column: the first empty column right of the table, so the sort
+  // range never swallows user content. Grown/deleted only if the sheet is
+  // narrower than that (rare — Sheets start with 26 columns).
+  const maxCols = sheet.getMaxColumns();
+  const scratchCol = Math.max(sheet.getLastColumn(), lastDataCol) + 1;
+  const addedCols = Math.max(0, scratchCol - maxCols);
+  if (addedCols > 0) sheet.insertColumnsAfter(maxCols, addedCols);
+
+  try {
+    // Stable ordering: V8's Array.sort is stable, and the explicit index
+    // tie-break below makes the intent independent of that guarantee.
+    const weights = sheet.getRange(start, weightCol, rows, 1).getValues();
+    const order = [];
+    for (let i = 0; i < rows; i++) order.push(i);
+    order.sort(function (a, b) {
+      const wa = parseFloat(weights[a][0]);
+      const wb = parseFloat(weights[b][0]);
+      const na = isNaN(wa);
+      const nb = isNaN(wb);
+      if (na !== nb) return na ? 1 : -1; // non-numeric weights sink to the bottom
+      if (wa !== wb) return wb - wa; // heavier first
+      return a - b; // equal weight → keep the current order
+    });
+    const ranks = new Array(rows);
+    for (let pos = 0; pos < order.length; pos++) ranks[order[pos]] = pos + 1;
+    const lines = [];
+    for (let i = 0; i < rows; i++) lines.push([ranks[i]]);
+    sheet.getRange(start, scratchCol, rows, 1).setValues(lines);
+
+    sheet
+      .getRange(start, firstCol, rows, scratchCol - firstCol + 1)
+      .sort([{ column: scratchCol - firstCol + 1, ascending: true }]);
+  } finally {
+    // Always remove the scratch keys, even if the sort failed.
+    sheet.getRange(start, scratchCol, rows, 1).clearContent();
+    if (addedCols > 0) sheet.deleteColumns(scratchCol, addedCols);
+  }
+
+  toast_('Habits sorted by weight — ties keep their current order.', 'Weekly Plan');
+  return 'Habits sorted by weight — ties keep their current order.';
 }

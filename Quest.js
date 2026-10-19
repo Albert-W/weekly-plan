@@ -46,7 +46,8 @@ function questHabitCandidates_() {
   const start = CONFIG.HABITS.DATA_START_ROW;
   const last = getLastHabitRow_();
   if (last < start) return [];
-  const vals = sheet.getRange(start, 1, last - start + 1, 1).getValues();
+  const nameCol = columnLetterToIndex(CONFIG.HABITS.COLUMNS.HABIT_NAME) + 1; // B -> 2
+  const vals = sheet.getRange(start, nameCol, last - start + 1, 1).getValues();
   const out = [];
   for (let i = 0; i < vals.length; i++) {
     const name = vals[i][0];
@@ -166,7 +167,7 @@ function applyQuestHighlights_(quest) {
     const row = questHabitRowByName_(quest.habitName);
     if (row > 0) {
       getSheetByName_(CONFIG.HABITS_SHEET)
-        .getRange(row, 1)
+        .getRange(row, columnLetterToIndex(CONFIG.HABITS.COLUMNS.HABIT_NAME) + 1) // B
         .setBackground(CONFIG.COLORS.QUEST_HIGHLIGHT);
     }
   });
@@ -189,7 +190,9 @@ function clearQuestHighlights_(quest) {
   safeInit_('Quest unhighlight (habit) failed', function () {
     const row = questHabitRowByName_(quest.habitName);
     if (row > 0) {
-      getSheetByName_(CONFIG.HABITS_SHEET).getRange(row, 1).setBackground(CONFIG.COLORS.CLEAR);
+      getSheetByName_(CONFIG.HABITS_SHEET)
+        .getRange(row, columnLetterToIndex(CONFIG.HABITS.COLUMNS.HABIT_NAME) + 1) // B
+        .setBackground(CONFIG.COLORS.CLEAR);
     }
   });
   safeInit_('Quest unhighlight (task) failed', function () {

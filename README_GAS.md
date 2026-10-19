@@ -29,6 +29,13 @@ in-sheet Archive tab, and a daily maintenance trigger).
   yesterday's score, today's Daily Quest (featured habit + task), your combo,
   XP/level, and the weekly boss. Set it up once via **Weekly Plan → Set up
   Telegram…** (see below). The legacy email recap is disabled by default.
+- **Calendar import** — the ~5am trigger and **Sync calendar → Weekly** copy
+  this week's events from **every** calendar in your Google Calendar list
+  (primary, shared, subscribed) into the matching 30-minute slots. When two
+  events land in the same slot their titles share the cell
+  (`Title A / Title B`). Narrow the import with
+  `CONFIG.CALENDAR.CALENDAR_NAMES`, or leave calendars out with
+  `EXCLUDE_CALENDAR_NAMES`; all-day events and declined invites are skipped.
 
 ## File map (port of `../src/taskpane/js`)
 
@@ -45,7 +52,7 @@ in-sheet Archive tab, and a daily maintenance trigger).
 | `Quest.js` | *(new)* | Daily Quest: per-day habit+task pick, bonus, highlights, streak combos |
 | `Email.js` | *(new)* | Morning summary email (yesterday's recap + today's quest) — disabled by default in favor of Telegram |
 | `Telegram.js` | *(new)* | Morning recap via a Telegram bot (yesterday's score + today's quest, ~8am) |
-| `Calendar.js` | *(new)* | One-way Google Calendar → Weekly grid import |
+| `Calendar.js` | *(new)* | One-way Google Calendar → Weekly grid import (all calendars; see `CONFIG.CALENDAR`) |
 | `Xp.js` | *(new)* | XP, levels & badges (lifetime progression) |
 | `Boss.js` | *(new)* | Weekly Boss: rotating objective, HP bar, XP+badge reward |
 | `Triggers.js` | `app.js` + `events.js` | Menu, sidebar, onEdit dispatch, daily trigger, init |
@@ -116,8 +123,14 @@ authorize (steps 7–9 below).
   with **dropdowns sourced from the Tasks list** (pick, don't type); score
   columns D/F/H/J/L/N/P with 0–1 dropdowns; calendar borders; daily totals in
   the **Scores** row (38).
-- **Habits** — `A` = habit name, `B` = **Done? checkbox**, `C` = base score,
-  `D:Q` = 14-day window (header in row 3), `R` = total count.
+- **Habits** — `A` = condition (cue), `B` = response (the habit name used
+  everywhere), `C` = **Done? checkbox**, `D` = base score, `E:R` = 14-day
+  window (header in row 3, `C3` = "yyyy mm" window label), `S` = total count.
+  Older sheets are upgraded in place (one column is inserted so existing
+  habit names move from `A` to `B`): automatically on the next daily init /
+  sidebar open, and by **Set up sheets**.
+  **Sort** orders by base score descending; habits with the same score keep
+  their current relative order.
 - **Tasks** — `A` name, `B` weight, `C` created, `D` last done, `F` count,
   `G` total score (headers in row 3, data from row 4).
 - **Summary** — `A` date (YYYYMMDD), `D` positive, `E` negative, `F` total

@@ -98,7 +98,7 @@ function setUpWeeklySheet_() {
 /**
  * Refresh the hidden _Dropdown sheet with a combined list of task names
  * and habit names, so the Weekly task-cell dropdowns offer both.
- * Sorted by weight descending (task weight = col B, habit weight = col C),
+ * Sorted by weight descending (task weight = col B, habit weight = col D),
  * then alphabetically for ties.  Idempotent: safe to call from setup,
  * task CRUD, and habit refresh.
  */
@@ -131,17 +131,18 @@ function refreshDropdownList_() {
   }
 
   // --- Habits ---
-  // Read name (col A) + weight (col C) in one batch.  Column B is the
-  // "done" checkbox — we skip it but have to read through it because the
-  // columns are contiguous.
+  // Read response/name (col B) + weight (col D) in one batch.  Column C
+  // is the "done" checkbox — we skip it but have to read through it
+  // because the columns are contiguous, so the weight sits at index 2 of
+  // a 3-column read starting at the name column.
   var habitsSheet = getSheetByName_(CONFIG.HABITS_SHEET);
   if (habitsSheet) {
     var lastRow = getLastHabitRow_();
     var H = CONFIG.HABITS;
     if (lastRow >= H.DATA_START_ROW) {
       var habitRows = lastRow - H.DATA_START_ROW + 1;
-      var nameColIdx = columnLetterToIndex(H.COLUMNS.HABIT_NAME) + 1; // A -> 1
-      // Read from name column through base-score column (col A..C).
+      var nameColIdx = columnLetterToIndex(H.COLUMNS.HABIT_NAME) + 1; // B -> 2
+      // Read from name column through base-score column (col B..D).
       var habitData = habitsSheet
         .getRange(H.DATA_START_ROW, nameColIdx, habitRows, 3)
         .getValues();
@@ -150,7 +151,7 @@ function refreshDropdownList_() {
         if (name) {
           entries.push({
             name: String(name).trim(),
-            weight: parseFloat(habitData[i][2]) || 0, // col C = index 2 in a 3-col read
+            weight: parseFloat(habitData[i][2]) || 0, // col D = index 2 in a 3-col read
           });
         }
       }
@@ -330,25 +331,36 @@ function setUpHabitsSheet_() {
   const sheet = getOrCreateSheet_(CONFIG.HABITS_SHEET);
   const H = CONFIG.HABITS;
 
-  // Header row labels. Note: B3 (the checkbox column header) is set by
+  // Upgrade an older sheet in place (cue/response layout only). Safe and
+  // idempotent: it does nothing once A/B are in place.
+  migrateHabitsCueColumn_(sheet);
+
+  // Header row labels. Note: C3 (the checkbox column header) is set by
   // refreshHabitsDatesCore_ to the "yyyy mm" window label, so we don't
   // write a "Done?" label there.
-  sheet.getRange(H.COLUMNS.HABIT_NAME + H.HEADER_ROW).setValue('Habit').setFontWeight('bold');
+  sheet.getRange(H.COLUMNS.HABIT_CUE + H.HEADER_ROW).setValue('Condition').setFontWeight('bold');
+  sheet.getRange(H.COLUMNS.HABIT_NAME + H.HEADER_ROW).setValue('Response').setFontWeight('bold');
   sheet.getRange(H.COLUMNS.WEIGHT + H.HEADER_ROW).setValue('Weight').setFontWeight('bold');
   sheet.getRange(H.COLUMNS.TOTAL_COUNT + H.HEADER_ROW).setValue('Total').setFontWeight('bold');
 
-  // Seed a few sample habits on first run only (don't clobber data).
-  const lastNameRow = getLastRowInColumn_(sheet, columnLetterToIndex(H.COLUMNS.HABIT_NAME) + 1);
-  if (lastNameRow < H.DATA_START_ROW) {
+  // Seed a few sample habits on first run only (don't clobber data). Both
+  // leading columns must be empty — a user who already typed cues (but no
+  // responses yet) must not have them overwritten.
+  const cueColIdx = columnLetterToIndex(H.COLUMNS.HABIT_CUE) + 1; // A -> 1
+  const nameColIdx = columnLetterToIndex(H.COLUMNS.HABIT_NAME) + 1; // B -> 2
+  const lastNameRow = getLastRowInColumn_(sheet, nameColIdx);
+  const lastCueRow = getLastRowInColumn_(sheet, cueColIdx);
+  if (lastNameRow < H.DATA_START_ROW && lastCueRow < H.DATA_START_ROW) {
     const samples = [
-      ['Exercise', 1],
-      ['Read', 1],
-      ['Meditate', 1],
+      ['After waking up', 'Drink a glass of water'],
+      ['After lunch', 'Take a 10-minute walk'],
+      ['Before bed', 'Read 10 pages'],
     ];
     for (let i = 0; i < samples.length; i++) {
       const row = H.DATA_START_ROW + i;
-      sheet.getRange(H.COLUMNS.HABIT_NAME + row).setValue(samples[i][0]);
-      sheet.getRange(H.COLUMNS.WEIGHT + row).setValue(samples[i][1]);
+      sheet.getRange(H.COLUMNS.HABIT_CUE + row).setValue(samples[i][0]);
+      sheet.getRange(H.COLUMNS.HABIT_NAME + row).setValue(samples[i][1]);
+      sheet.getRange(H.COLUMNS.WEIGHT + row).setValue(1);
     }
   }
 
@@ -369,7 +381,7 @@ function setUpHabitsSheet_() {
     )
     .insertCheckboxes();
 
-  // Populate the 14-day window header (B3 + D3:Q3) on first setup only.
+  // Populate the 14-day window header (C3 + E3:R3) on first setup only.
   // Re-running must NOT clear existing completion data, so we check
   // whether the day headers already have values before refreshing.
   const firstDayHeader = sheet.getRange(H.HEADER_RANGE).getValues()[0];
@@ -383,6 +395,55 @@ function setUpHabitsSheet_() {
 }
 
 /**
+ * One-time layout upgrade for the Habits sheet.
+ *
+ * Older sheets started with a single "Habit" column (A) followed by the
+ * done-checkbox (B), weight (C), the 14-day window (D:Q) and Total (R).
+ * The sheet now starts with cue (A) + response (B), so all of those sit
+ * one column further right. When the old layout is detected we insert one
+ * column before A: every existing habit name, checkbox state, weight and
+ * day cell shifts right by one and A is left empty for the user's
+ * conditions. Idempotent — a migrated (or brand-new) sheet is untouched.
+ *
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ * @returns {boolean} true when a column was inserted
+ */
+function migrateHabitsCueColumn_(sheet) {
+  const H = CONFIG.HABITS;
+  const cueHeader = String(sheet.getRange(H.COLUMNS.HABIT_CUE + H.HEADER_ROW).getValue() || '').trim();
+  const yearMonth = String(sheet.getRange('B3').getValue() || '').trim();
+
+  // Old layout fingerprints: B3 held the "yyyy mm" window label, and A3
+  // was the "Habit" header. New/blank sheets match neither.
+  const looksOld = /^\d{4}\s+\d{1,2}$/.test(yearMonth) || cueHeader.toLowerCase() === 'habit';
+  if (!looksOld) return false;
+
+  sheet.insertColumnBefore(1);
+
+  // Labels for the two leading columns. C3 (the shifted "yyyy mm" cell)
+  // is left alone so findHabitsDayColumnIndex_ keeps working.
+  sheet.getRange(H.COLUMNS.HABIT_CUE + H.HEADER_ROW).setValue('Condition').setFontWeight('bold');
+  sheet.getRange(H.COLUMNS.HABIT_NAME + H.HEADER_ROW).setValue('Response').setFontWeight('bold');
+
+  // The old checkbox column travelled from B to C with the insert; re-apply
+  // the native checkboxes anyway so check-in cannot break if the validation
+  // did not move (this also covers rows added later).
+  const checkboxLastRow = Math.max(getLastHabitRow_(), H.DATA_START_ROW + 49);
+  sheet
+    .getRange(
+      H.DATA_START_ROW,
+      columnLetterToIndex(H.COLUMNS.DONE_CHECKBOX) + 1,
+      checkboxLastRow - H.DATA_START_ROW + 1,
+      1
+    )
+    .insertCheckboxes();
+
+  Logger.log('Habits: inserted Condition column (A) — habit names now live in B (Response).');
+  toast_('Habits: added column A (Condition) — existing habits moved to B (Response).', 'Weekly Plan');
+  return true;
+}
+
+/**
  * Add the "写日记" habit (weight 1) to the Habits sheet if not present.
  * Idempotent — safe on every set-up / re-run.
  */
@@ -391,7 +452,8 @@ function ensureDiaryHabit_() {
   if (!sheet) return;
   const D = CONFIG.DIARY;
   if (findHabitRowByName_(D.HABIT_NAME) >= 0) return;
-  const lastRow = getLastRowInColumn_(sheet, 1);
+  const nameColIdx = columnLetterToIndex(CONFIG.HABITS.COLUMNS.HABIT_NAME) + 1; // B -> 2
+  const lastRow = getLastRowInColumn_(sheet, nameColIdx);
   const row = Math.max(lastRow + 1, CONFIG.HABITS.DATA_START_ROW);
   sheet.getRange(CONFIG.HABITS.COLUMNS.HABIT_NAME + row).setValue(D.HABIT_NAME);
   sheet.getRange(CONFIG.HABITS.COLUMNS.WEIGHT + row).setValue(D.HABIT_WEIGHT);

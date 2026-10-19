@@ -45,19 +45,25 @@ const CONFIG = {
   HIDDEN_SHEET: '_Dropdown', // Hidden helper: combined task+habit names for Weekly dropdowns
 
   // ==================== HABITS CONFIG ====================
+  // Habit rows are cue → response pairs: A = condition (the trigger the
+  // user sets up), B = response (the habit itself). B is the habit's
+  // identity everywhere — Weekly dropdown, Daily Quest picks, the diary
+  // habit lookup, toasts. The check-in / scoring columns are unchanged in
+  // behaviour, they simply sit one column further right.
   HABITS: {
     DATA_START_ROW: 4,
     HEADER_ROW: 3,
     COLUMNS: {
-      HABIT_NAME: 'A',
-      DONE_CHECKBOX: 'B', // GAS-only: native checkbox column ("mark done")
-      WEIGHT: 'C',
-      DAY_START: 'D',
-      DAY_END: 'Q',
-      TOTAL_COUNT: 'R',
+      HABIT_CUE: 'A', // condition / trigger (no scoring meaning)
+      HABIT_NAME: 'B', // response — the habit name all lookups key on
+      DONE_CHECKBOX: 'C', // GAS-only: native checkbox column ("mark done")
+      WEIGHT: 'D',
+      DAY_START: 'E',
+      DAY_END: 'R',
+      TOTAL_COUNT: 'S',
     },
-    YEAR_MONTH_CELL: 'B3',
-    HEADER_RANGE: 'D3:Q3',
+    YEAR_MONTH_CELL: 'C3',
+    HEADER_RANGE: 'E3:R3',
     DAYS_COUNT: 14,
     STREAK_MULTIPLIER: 1.1,
   },
@@ -168,30 +174,49 @@ const CONFIG = {
     // Hour of day (0–23, spreadsheet timezone) for the morning send.
     // Apps Script time triggers fire within that hour window.
     SEND_HOUR: 8,
+    // ~minute within SEND_HOUR. atHour(8).nearMinute(30) fires in the
+    // 8:30–8:44 window. The diary's "今日要点" prompt is folded into this
+    // same message (2026-10-15), so there is one morning notification, not two.
+    SEND_MINUTE: 30,
     // DocumentProperties key tracking the last date we sent (no dupes).
     LAST_SENT_PROP: 'lastTelegramDate',
   },
 
   // ==================== DAILY DIARY CONFIG ====================
-  // Evening (~21:30) Telegram reminder links a prefilled Google Form; the
-  // onFormSubmit trigger upserts a row in the Diary sheet, and the habit
-  // check ("写日记") is deferred to a spreadsheet-context run
-  // (processPendingDiaryHabits_) so XP/quest/boss state never resolves to
-  // the Form's document. Diary persistent state lives in SCRIPT Properties
-  // (see the registry note at the top), because the form trigger fires in a
+  // Morning plan, not an evening summary (flipped 2026-10-15): at ~8:30 the
+  // single morning Telegram message links a prefilled Google Form, and its
+  // onFormSubmit trigger upserts a row in the Diary sheet. The habit check
+  // ("写日记") is deferred to a spreadsheet-context run
+  // (processPendingDiaryHabits_) so XP/quest/boss state never resolves to the
+  // Form's document. Diary persistent state lives in SCRIPT Properties (see
+  // the registry note at the top), because the form trigger fires in a
   // cross-document context where DocumentProperties is unreliable.
   DIARY: {
-    // Master on/off switch for the diary reminder + submit handling.
+    // Master on/off switch for the diary submit handling.
     ENABLED: true,
-    // Reminder hour/min. Apps Script can't hit 21:30 exactly —
-    // atHour(21).nearMinute(30) fires in the 21:15–21:45 window.
-    SEND_HOUR: 21,
-    SEND_MINUTE: 30,
     // Habit row seeded by Setup so submitting the form = marking this habit.
     HABIT_NAME: '写日记',
     HABIT_WEIGHT: 1,
     // Mood select options; index+1 → stored mood 1–5.
     MOOD_EMOJI: ['😄', '🙂', '😐', '😔', '😫'],
+    // Form item titles. handleDiarySubmit matches responses by TITLE (not
+    // index), so setUpDiary must create/rename the items to exactly these
+    // strings — and handleDiarySubmit must look them up from here.
+    TITLES: {
+      DATE: '日期',
+      MOOD: '心情',
+      // Renamed from '担忧' when the diary became a morning plan; the sheet
+      // column / SQLite column / payload key are still called `worry`.
+      KEY_POINTS: '今日要点',
+      HIGHLIGHT: '亮点',
+      PLAN: '明日计划',
+      IMPROVE: '有什么可以改进的地方吗？',
+    },
+    // Legacy item titles setUpDiary renames in place (old title → new title),
+    // so re-running "Set up Diary…" migrates the live form instead of leaving
+    // a stale question behind. handleDiarySubmit also accepts these as
+    // fallbacks, so deploying before the form is migrated cannot blank the column.
+    RENAMED_TITLES: { '担忧': '今日要点' },
     // Script Properties keys (bare camelCase — see registry note).
     FORM_ID_PROP: 'diaryFormId',
     LAST_SENT_PROP: 'diaryLastSent',           // YYYYMMDD of last reminder
@@ -201,15 +226,19 @@ const CONFIG = {
     COLS: {
       DATE: 'A', MOOD: 'B', WORRY: 'C', HIGHLIGHT: 'D',
       TOMORROW_PLAN: 'E', SUBMITTED_AT: 'F', UPDATED_AT: 'G',
+      IMPROVE: 'H',
     },
     // Weekly top band (rows 1 & 3 are free; row 2 = control buttons, row 4 =
     // day headers). Never insert rows above the grid — row indices are
     // hardcoded in Weekly.js. Increase row height / use wrap instead.
+    // Row 1 shows the most recent diary's 今日要点 (stored in `worry`).
     BAND_WORRY_RANGE: 'C1:P1',
     BAND_PLAN_RANGE: 'C3:P3',
     BAND_ROW_HEIGHT: 42,
-    // Submissions in these local hours fall back to the previous day only
-    // when the form's Date item is missing.
+    // Fallback only (the form's Date item is normally prefilled): submissions
+    // in these local hours count as the previous day. Note this rule was
+    // written for evening entries; a morning entry submitted before 4am would
+    // be attributed to yesterday — set to 0 to disable if you ever write that early.
     LATE_NIGHT_MAX_HOUR: 4,
   },
 
@@ -219,8 +248,27 @@ const CONFIG = {
   CALENDAR: {
     // Master on/off switch for calendar sync.
     ENABLED: true,
-    // Empty string => primary/default calendar; otherwise a calendar name.
+    // Calendars to import, by display name or calendar id (case-insensitive).
+    // Empty array => every calendar in your Google Calendar list (primary +
+    // shared/subscribed). Example: ['Personal', 'Work', 'Family'].
+    CALENDAR_NAMES: [],
+    // Legacy single-calendar override, only used when CALENDAR_NAMES is empty.
+    // Empty string => same as CALENDAR_NAMES: [] (all calendars).
     CALENDAR_NAME: '',
+    // Calendar names/ids to leave out, even when syncing all calendars.
+    // Useful for feeds you never plan around, e.g. ['Holidays in Ireland'].
+    EXCLUDE_CALENDAR_NAMES: [],
+    // Only import calendars that are checked (visible) in the Calendar list.
+    // Ignored on runtimes without Calendar.isSelected().
+    ONLY_SELECTED: false,
+    // Skip events you declined (RSVP = No) — they appear in the feed but
+    // shouldn't take up timetable slots. Only applies when you are on the
+    // guest list; events on shared calendars you were never invited to are
+    // kept even though the API can report them as "No".
+    SKIP_DECLINED: true,
+    // Several events can overlap one 30-min slot across calendars; their
+    // titles are joined with this separator instead of overwriting.
+    MULTI_EVENT_SEPARATOR: ' / ',
     // Skip all-day events (they don't map to a 30-min time slot).
     SKIP_ALL_DAY: true,
     // Synced event titles are arbitrary strings, not Tasks-list entries.

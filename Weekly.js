@@ -310,7 +310,7 @@ function processWeeklyScoreChange(row, col, newScore) {
 
       // ------------------------------------------------------------------
       // Resolve the weight for this task / habit name.
-      // 1) Habits sheet → weight = weight column (col C)
+      // 1) Habits sheet → weight = weight column (col D)
       // 2) Tasks sheet   → weight = task weight (col B)
       // 3) Fallback      → "others" row or auto-create (weight = 1)
       // ------------------------------------------------------------------
@@ -328,13 +328,14 @@ function processWeeklyScoreChange(row, col, newScore) {
         const lastHabitRow = getLastHabitRow_();
         const H = CONFIG.HABITS;
         if (lastHabitRow >= H.DATA_START_ROW) {
-          const nameCol = columnLetterToIndex(H.COLUMNS.HABIT_NAME) + 1; // A → 1
+          const nameCol = columnLetterToIndex(H.COLUMNS.HABIT_NAME) + 1; // B → 2
+          // B..D: response (index 0), checkbox (1), weight (2).
           const habitData = habitsSheet
             .getRange(H.DATA_START_ROW, nameCol, lastHabitRow - H.DATA_START_ROW + 1, 3)
             .getValues();
           for (let i = 0; i < habitData.length; i++) {
             if (String(habitData[i][0]).trim() === taskName) {
-              taskWeight = parseFloat(habitData[i][2]) || 1; // col C = index 2
+              taskWeight = parseFloat(habitData[i][2]) || 1; // col D = index 2
               isHabit = true;
               habitRow = H.DATA_START_ROW + i;
               break;
@@ -552,22 +553,22 @@ function recalculateWeek() {
     }
   }
 
-  // Also add habits (name → weight, col C).  Habit weights are only
-  // added when there is no task with the same name, so task weights take
-  // precedence if a name exists in both sheets.
+  // Also add habits (response name → weight, col D).  Habit weights are
+  // only added when there is no task with the same name, so task weights
+  // take precedence if a name exists in both sheets.
   const habitsSheet = getSheetByName_(CONFIG.HABITS_SHEET);
   if (habitsSheet) {
     const lastHabitRow = getLastHabitRow_();
     const H = CONFIG.HABITS;
     if (lastHabitRow >= H.DATA_START_ROW) {
-      const nameCol = columnLetterToIndex(H.COLUMNS.HABIT_NAME) + 1;
+      const nameCol = columnLetterToIndex(H.COLUMNS.HABIT_NAME) + 1; // B
       const habitData = habitsSheet
         .getRange(H.DATA_START_ROW, nameCol, lastHabitRow - H.DATA_START_ROW + 1, 3)
         .getValues();
       for (let i = 0; i < habitData.length; i++) {
         const hName = String(habitData[i][0]).trim();
         if (hName && weightByName[hName] === undefined) {
-          weightByName[hName] = parseFloat(habitData[i][2]) || 1;
+          weightByName[hName] = parseFloat(habitData[i][2]) || 1; // col D
         }
       }
     }
