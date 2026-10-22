@@ -10,9 +10,9 @@ Core features:
 - **Daily Quest** — one featured habit + task per day with bonus multipliers and consecutive-day combo streak
 - **XP / Levels / Badges** — lifetime progression: Centurion, Rising Star, Week Warrior, Quest Master, Early Bird, Boss Slayer
 - **Weekly Boss** — rotating weekly objective; defeat grants XP + badge
-- **Daily Diary** — a **morning plan** (flipped from an evening summary 2026-10-15), with two entry points onto **the same Diary row** (keyed by date): the prefilled Google Form linked from the ~8:30 Telegram message, and the "✍️ 写今天" editor on the local reader page (`POST /api/diary` → Web App `action=diary`). Either way the row lands in the Diary sheet + marks the "写日记" habit + feeds the Weekly top band; local SQLite + reader on the Mac (see `local/`). The form's "担忧" item was renamed to "今日要点" (the `worry` storage key/sheet column kept its name)
-- **Automation** — daily triggers: ~5am maintenance + calendar sync, ~8:30 one Telegram morning message (recap + diary link)
-- **Web App API** (`WebApp.js`) — JSON snapshot + habit check-in + diary view (`?view=diary`) + diary save (`POST action=diary`) + `?view=links` + `?view=schedule` (today's timetable, used by the diary page's 今日排程 panel) endpoints for an external Mac Mini bot
+- **Daily Diary** — a **morning plan** (flipped from an evening summary 2026-10-15), with two entry points onto **the same Diary row** (keyed by date): the prefilled Google Form linked from the ~8:30 Telegram message, and the "✍️ 写今天" editor on the local reader page (`POST /api/diary` → Web App `action=diary`). Either way the row lands in the Diary sheet + marks the "写日记" habit + feeds the Weekly top band; local SQLite + reader on the Mac (see `local/`). The reader separately snapshots each day's **Weekly-grid slots into its own `plan_day` table** (via `?view=schedule`, which takes an optional `date` to look at any day of the current week) — the grid is archived + cleared by "Start new week…", and a day can have a plan without a journal entry, so plans are keyed by date instead of attached to the diary row; `local/backfill_plans.py` re-captures the current week. The form's "担忧" item was renamed to "今日要点" (the `worry` storage key/sheet column kept its name)
+- **Automation** — daily triggers: ~5am maintenance + calendar sync; the ~8:30 Telegram morning message (recap + diary link) is **switched off** since 2026-10-22 (`CONFIG.TELEGRAM.ENABLED = false` → `installTriggers()` creates no `morningTelegram` trigger; manual sends from the menu still work)
+- **Web App API** (`WebApp.js`) — JSON snapshot + habit check-in + diary view (`?view=diary`) + diary save (`POST action=diary`) + `?view=links` + `?view=schedule[&date=YYYY-MM-DD]` (one day of the Weekly timetable: the diary page's 今日排程 panel, and the Mac side's plan backfill) endpoints for an external Mac Mini bot
 
 ## Tech Stack
 
@@ -103,8 +103,10 @@ clasp push   # uploads *.js, *.html, appsscript.json (per .claspignore)
 ### Trigger Schedule
 
 - `dailyMaintenance` — ~5am (init + calendar sync + diary band refresh / deferred habit)
-- `morningTelegram` — ~8:30, the single morning notification: yesterday's score + the plan yesterday's diary set for today + today's quest + the prefilled 今日要点 form link + the Weekly Plan link
+- `morningTelegram` — **not created** since 2026-10-22 (`CONFIG.TELEGRAM.ENABLED = false`). When enabled it is the single ~8:30 notification: yesterday's score + the plan yesterday's diary set for today + today's quest + the prefilled 今日要点 form link + the Weekly Plan link. Turning it back on = set the flag true, then **Install triggers (run once)**.
 - The old `diaryReminder` (~21:30) trigger is **no longer created**; it stays in `installTriggers`' managed/purge list so an existing one is deleted on the next run. "Send diary reminder now" still works from the menu.
+
+Note: time-driven triggers execute the project's **HEAD** code, so a `clasp push` changes scheduled behaviour without redeploying the Web App.
 
 The `handleDiarySubmit` **form** trigger is installed separately by **Set up Diary…** — re-run that menu item after changing `CONFIG.DIARY.TITLES` (it renames live form items in place via `RENAMED_TITLES`).
 
@@ -119,4 +121,5 @@ All triggers are installed idempotently via `Triggers.installTriggers()`.
 - **The diary has exactly one write path**: the Form trigger (`handleDiarySubmit`) and the Web-App editor (`saveDiaryFromWeb_`) both call `upsertDiaryRow_` (date-keyed, under the document lock). Never add a second diary writer — that is what keeps the Telegram form and the site editor on the same Diary row.
 - **Form-trigger caveat**: `handleDiarySubmit` runs in a Form (cross-document) context — keep gamification side effects (habit/XP/badge) in spreadsheet-context functions (`processPendingDiaryHabits_`, `maybeAwardChronicler_`), and keep diary state in Script Properties.
 - Sidebar is **poll-based** (Apps Script has no server→client push), keep polling intervals reasonable.
+- **Calendar sync must never leave a task cell without its dropdown.** Event cells are intentionally left dropdown-less while they hold a free-form title (`CLEAR_DROPDOWN`), so `applyTaskValidation_` re-applies the dropdown grid-wide at the end of every sync and at week rollover. Any new path that clears or writes task cells must keep that invariant.
 - All scoring mutations must go through the lock path to avoid concurrent-write corruption.

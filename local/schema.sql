@@ -46,3 +46,13 @@ CREATE TABLE IF NOT EXISTS diary (
   -- Bookkeeping
   enriched_at   TEXT                            -- ISO8601 when the env pass completed
 );
+
+-- Per-day snapshots of the Weekly grid. Deliberately NOT columns on `diary`:
+-- a day can have a planned timetable without a journal entry, and the grid is
+-- archived + cleared by "Start new week…", so this is the only durable copy of
+-- the plan side of a day.
+CREATE TABLE IF NOT EXISTS plan_day (
+  date        TEXT PRIMARY KEY,                 -- 'YYYY-MM-DD'
+  slots_json  TEXT NOT NULL,                    -- JSON [{"time","task","score"}]
+  captured_at TEXT NOT NULL                     -- ISO8601 UTC of the last capture
+);

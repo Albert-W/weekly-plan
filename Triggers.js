@@ -253,12 +253,17 @@ function installTriggers() {
   ScriptApp.newTrigger('dailyMaintenance').timeBased().everyDays(1).atHour(5).create();
 
   // One morning message (~8:30): recap + today's quest + the diary link.
-  ScriptApp.newTrigger('morningTelegram')
-    .timeBased()
-    .everyDays(1)
-    .atHour(CONFIG.TELEGRAM.SEND_HOUR)
-    .nearMinute(CONFIG.TELEGRAM.SEND_MINUTE)
-    .create();
+  // Only created while CONFIG.TELEGRAM.ENABLED is true — with it off there is
+  // no scheduled Telegram job at all (nothing to execute, nothing to dedupe).
+  const telegramOn = !!CONFIG.TELEGRAM.ENABLED;
+  if (telegramOn) {
+    ScriptApp.newTrigger('morningTelegram')
+      .timeBased()
+      .everyDays(1)
+      .atHour(CONFIG.TELEGRAM.SEND_HOUR)
+      .nearMinute(CONFIG.TELEGRAM.SEND_MINUTE)
+      .create();
+  }
 
   // Update the current-time-row highlight every 5 min so it stays accurate
   // even when the sidebar is closed.  5 min keeps worst-case lag negligible
@@ -273,9 +278,12 @@ function installTriggers() {
   // onSelectionChange (control buttons) is a SIMPLE trigger — it fires
   // automatically by name and cannot/should not be created here.
   const msg =
-    'Triggers installed: live edits + daily maintenance (~5am) + morning message (~' +
-    CONFIG.TELEGRAM.SEND_HOUR + ':' + String(CONFIG.TELEGRAM.SEND_MINUTE).padStart(2, '0') +
-    ', recap + diary link). Control buttons work automatically.';
+    'Triggers installed: live edits + daily maintenance (~5am)' +
+    (telegramOn
+      ? ' + morning message (~' + CONFIG.TELEGRAM.SEND_HOUR + ':' +
+        String(CONFIG.TELEGRAM.SEND_MINUTE).padStart(2, '0') + ', recap + diary link)'
+      : ' — daily Telegram message is OFF (CONFIG.TELEGRAM.ENABLED)') +
+    '. Control buttons work automatically.';
   toast_(msg, 'Weekly Plan');
   return msg;
 }

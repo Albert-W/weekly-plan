@@ -21,6 +21,11 @@
  * them), so re-running updates in place instead of duplicating. Existing
  * cell contents in the synced range are overwritten by calendar events.
  *
+ * Dropdowns: the task-cell dropdown is never removed for good. Event cells
+ * are left without one while they hold a free-form title (so it isn't
+ * flagged invalid), and the whole grid's dropdowns are re-applied at the
+ * end of every sync and at week rollover.
+ *
  * Requires the calendar.readonly OAuth scope (see appsscript.json).
  */
 
@@ -306,10 +311,9 @@ function clearPreviousSyncCells_(sheet) {
     const cell = sheet.getRange(r, c);
     // Preserve cells the user already scored (score col = task col + 1).
     const score = sheet.getRange(r, c + 1).getValue();
+    // Content only — the task dropdown is restored grid-wide at the end of
+    // the sync (applyTaskValidation_), so clearing must not remove it.
     if (score === '' || score === null) cell.clearContent();
-    // Strip the dropdown left over from older syncs so stale cells stop
-    // showing "Input must fall within specified range".
-    if (CONFIG.CALENDAR.CLEAR_DROPDOWN !== false) cell.setDataValidation(null);
   }
 }
 
@@ -457,14 +461,20 @@ function syncCalendarToWeekly_() {
 
   for (let w = 0; w < written.length; w++) {
     const bucket = buckets[written[w]];
-    const cell = sheet.getRange(bucket.row, bucket.col);
-    cell.setValue(bucket.titles.join(separator));
-    // Synced titles are free-form, not Tasks-list entries — drop the
-    // dropdown so they aren't flagged invalid (default on).
-    if (CONFIG.CALENDAR.CLEAR_DROPDOWN !== false) cell.setDataValidation(null);
+    sheet.getRange(bucket.row, bucket.col).setValue(bucket.titles.join(separator));
   }
 
   saveSyncCells_(written);
+
+  // Restore the task dropdown grid-wide. Cells holding this week's event
+  // titles keep none (so the free-form title isn't flagged invalid — the
+  // default; config-gated), but every other task cell is guaranteed the
+  // dropdown again. Without this, a timeslot that once held an event lost
+  // its dropdown permanently, including for next week's grid.
+  safeInit_('Task dropdown refresh failed', function () {
+    applyTaskValidation_(sheet, CONFIG.CALENDAR.CLEAR_DROPDOWN !== false);
+  });
+
   SpreadsheetApp.flush();
 
   let msg = 'Synced ' + eventCount + ' event(s) from ' + sources.calendars.length +

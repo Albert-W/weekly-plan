@@ -504,7 +504,19 @@ function doWeekRollover_(archive) {
     }) || { url: null, rows: 0 };
   }
   clearForNewWeek(sheet);
+
+  // Drop any calendar events left over from the finished week, then give
+  // the fresh grid its task dropdowns back. The sync intentionally leaves
+  // event cells without a dropdown while they hold a free-form title; the
+  // dropdowns must come back for the new week (this is the rollover half of
+  // that guarantee — the sync re-applies them too).
+  safeInit_('Calendar cells reset failed', function () {
+    clearPreviousSyncCells_(sheet);
+  });
   setNewWeekDates(sheet);
+  safeInit_('Task dropdown refresh failed', function () {
+    applyTaskValidation_(sheet);
+  });
   highlightCurrentDay(sheet);
   highlightCurrentTimeRow(sheet);
   return result;

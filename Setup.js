@@ -173,13 +173,24 @@ function refreshDropdownList_() {
 }
 
 /**
- * Add a dropdown to every task cell, sourced from the hidden _Dropdown
+ * Add the task dropdown to task cells, sourced from the hidden _Dropdown
  * sheet that combines task + habit names so both can be picked for a
  * time block. Invalid values are allowed so Random Pick fills and the
  * auto-created "others" task aren't flagged.
+ *
+ * This is also the sync's repair path: it guarantees every task cell has
+ * the dropdown, so a cell can never stay dropdown-less after a calendar
+ * event that occupied it is gone (the bug where a synced timeslot lost its
+ * dropdown for good).
+ *
  * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet Weekly sheet
+ * @param {boolean} [keepFreeText] When true, cells that hold text which is
+ *   NOT one of the dropdown options (i.e. calendar event titles) are left
+ *   without a validation rule, so they aren't flagged "Input must fall
+ *   within specified range". Empty cells always get the dropdown. Default
+ *   false: every task cell gets the dropdown.
  */
-function applyTaskValidation_(sheet) {
+function applyTaskValidation_(sheet, keepFreeText) {
   const W = CONFIG.WEEKLY;
 
   // Ensure the combined list is fresh before we wire up the dropdown.
@@ -194,12 +205,34 @@ function applyTaskValidation_(sheet) {
     .setAllowInvalid(true)
     .build();
 
+  // Snapshot the valid options once, only when free text must be preserved.
+  const allowed = {};
+  if (keepFreeText) {
+    const lastRow = hiddenSheet.getLastRow();
+    if (lastRow > 0) {
+      const names = hiddenSheet.getRange(1, 1, lastRow, 1).getValues();
+      for (let i = 0; i < names.length; i++) {
+        const name = String(names[i][0] || '').trim();
+        if (name) allowed[name] = true;
+      }
+    }
+  }
+
   const firstDataRow = W.DATA_START_ROW;
   const rowCount = W.LAST_TIME_ROW - firstDataRow + 1;
   for (let d = 0; d < W.DAYS_IN_WEEK; d++) {
-    sheet
-      .getRange(firstDataRow, getTaskColForDay(d), rowCount, 1)
-      .setDataValidation(rule);
+    const range = sheet.getRange(firstDataRow, getTaskColForDay(d), rowCount, 1);
+    range.setDataValidation(rule);
+    if (!keepFreeText) continue;
+    // Re-read the cells we just (re)validated and drop the rule from any
+    // free-form title (e.g. a calendar event) so it isn't flagged invalid.
+    const values = range.getValues();
+    for (let i = 0; i < values.length; i++) {
+      const text = values[i][0];
+      if (text === '' || text === null) continue;
+      if (allowed[String(text).trim()]) continue;
+      range.getCell(i + 1, 1).setDataValidation(null);
+    }
   }
 }
 

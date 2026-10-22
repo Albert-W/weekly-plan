@@ -36,6 +36,9 @@ in-sheet Archive tab, and a daily maintenance trigger).
   (`Title A / Title B`). Narrow the import with
   `CONFIG.CALENDAR.CALENDAR_NAMES`, or leave calendars out with
   `EXCLUDE_CALENDAR_NAMES`; all-day events and declined invites are skipped.
+  Event cells keep a free-form title (no dropdown, so it isn't flagged
+  invalid), and the task dropdown is re-applied to the whole grid at the end
+  of every sync and at week rollover — a slot never loses its dropdown for good.
 
 ## File map (port of `../src/taskpane/js`)
 

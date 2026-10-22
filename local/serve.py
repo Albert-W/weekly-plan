@@ -19,6 +19,7 @@ The browser never sees syncAuthKey: the page is same-origin with this server
 and only this server talks to the Web App.
 """
 
+import datetime
 import json
 import os
 import re
@@ -129,6 +130,20 @@ def load_diary(limit):
         conn.close()
 
 
+def load_plans():
+    """{date: {slots, captured_at}} — every stored day, with or without a diary
+    row (see plan_snapshot.py)."""
+    if HERE not in sys.path:
+        sys.path.insert(0, HERE)
+    import plan_snapshot  # noqa: E402 — local sibling module
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        ensure_columns(conn)
+        return plan_snapshot.load_all(conn)
+    finally:
+        conn.close()
+
+
 def load_diary_one(date_str):
     """One diary row (ISO date) or None — used to echo a save back to the page
     with the local-only enrichment fields intact."""
@@ -208,6 +223,26 @@ def enrich_one_local(date_str):
     return enrich_diary.enrich_one(date_str, DB_PATH)
 
 
+def capture_plan_local(date_str):
+    """Store the day's Weekly-grid slots on its diary row (best-effort).
+
+    Reuses the cached ?view=schedule payload, so a save right after a page load
+    costs no extra Apps Script call. plan_snapshot.capture refuses to write when
+    the grid's day doesn't match `date_str`.
+    """
+    if HERE not in sys.path:
+        sys.path.insert(0, HERE)
+    import plan_snapshot  # noqa: E402 — local sibling module
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        return plan_snapshot.capture(
+            conn, date_str, gas_get_schedule(),
+            datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+        )
+    finally:
+        conn.close()
+
+
 # ---- Today's schedule (Web App ?view=schedule, cached briefly) ----
 # The grid changes as the day is edited, but a page load shouldn't wait on Apps
 # Script every time — 5 minutes is a good trade for a personal dashboard.
@@ -256,6 +291,7 @@ class Handler(BaseHTTPRequestHandler):
             self._json({
                 "ok": True,
                 "diary": load_diary(limit or None),
+                "plans": load_plans(),          # {date: {slots, captured_at}}
                 "weekly_plan_url": WEEKLY_PLAN_URL,
             })
         elif parsed.path in ("/", "/index.html"):
@@ -366,10 +402,26 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:
             print("enrich_one failed for %s: %s" % (date_str, e), file=sys.stderr)
 
+        # Snapshot this day's Weekly-grid slots (plan_day), so the plan side of
+        # the day survives the grid being cleared at week rollover.
+        try:
+            capture_plan_local(date_str)
+        except Exception as e:
+            print("capture_plan failed for %s: %s" % (date_str, e), file=sys.stderr)
+
+        plans = {}
+        try:
+            one = load_plans().get(date_str)
+            if one:
+                plans[date_str] = one
+        except Exception as e:
+            print("load_plans failed for %s: %s" % (date_str, e), file=sys.stderr)
+
         self._json({
             "ok": True,
             "created": bool(res.get("created")),
             "diary": load_diary_one(date_str),
+            "plan": plans.get(date_str),
         })
 
     def _api_refresh(self):

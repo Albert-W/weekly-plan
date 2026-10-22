@@ -163,8 +163,18 @@ const CONFIG = {
   // per day via LAST_SENT_PROP. Requires the script.external_request
   // OAuth scope (see appsscript.json).
   TELEGRAM: {
-    // Master on/off switch for the daily Telegram recap.
-    ENABLED: true,
+    // Master on/off switch for the daily Telegram message.
+    // OFF since 2026-10-22 (user request: "关闭这个定时任务").
+    //   • With false, installTriggers() does NOT create the morningTelegram
+    //     trigger, so nothing fires at all (no daily execution).
+    //   • A trigger left over from before is deleted the next time
+    //     installTriggers() runs — it purges every handler in its `managed`
+    //     list before recreating the enabled ones.
+    //   • sendMorningTelegram_() also returns early on false, so even a stale
+    //     trigger can't send. Manual "Send Telegram recap now" still works
+    //     (force = true).
+    // To turn it back on: set true → Sheet menu → Install triggers (run once).
+    ENABLED: false,
     // Bot credentials are NOT stored in source. They live in Script
     // Properties under these keys — set them once via the "Set up
     // Telegram…" menu item (setUpTelegram) or the Script Properties
@@ -272,9 +282,11 @@ const CONFIG = {
     // Skip all-day events (they don't map to a 30-min time slot).
     SKIP_ALL_DAY: true,
     // Synced event titles are arbitrary strings, not Tasks-list entries.
-    // When true, remove the task-cell dropdown on cells written by the
-    // sync so those titles aren't flagged "invalid". Set false to keep
-    // the dropdown validation on every cell.
+    // When true, cells that hold a synced title are left without the task
+    // dropdown so the title isn't flagged "invalid". The dropdown is not
+    // lost for good: every other task cell gets it back at the end of each
+    // sync and at week rollover. Set false to keep the dropdown on synced
+    // cells too (their titles then show a warning triangle).
     CLEAR_DROPDOWN: true,
     // DocumentProperties key listing "row,col" cells written by the last
     // sync, so re-syncing can clear stale ones instead of duplicating.

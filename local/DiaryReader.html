@@ -95,6 +95,10 @@
   .sch-task { flex: 1; white-space: pre-wrap; overflow-wrap: anywhere; }
   .sch-empty { font-size: 12px; color: var(--muted); }
   .sch-note { font-size: 11px; color: var(--muted); margin-top: 7px; }
+  /* Archived per-day plan, rendered inside the diary card. */
+  .plan-block { background: #fbfbfe; border-radius: 6px; padding: 8px 10px; margin-bottom: 9px; }
+  .plan-title { font-size: 12px; color: var(--muted); margin-bottom: 5px; }
+  .plan-when { font-size: 11px; }
   .stats { margin-top: 10px; padding-top: 8px; border-top: 1px dashed #ddd; font-size: 12px; color: var(--muted); }
   .empty { color: rgba(255,255,255,.9); text-align: center; padding: 40px 0; }
   .error { background: #ffebee; color: #c62828; border-radius: 8px; padding: 12px; margin-bottom: 14px; }
@@ -128,6 +132,12 @@
   .cal-cell.has::after {
     content: ''; position: absolute; left: 50%; bottom: 3px; transform: translateX(-50%);
     width: 4px; height: 4px; border-radius: 50%; background: var(--grad-b);
+  }
+  /* A day with a saved plan but no journal entry: hollow dot. */
+  .cal-cell.plan:not(.has)::after {
+    content: ''; position: absolute; left: 50%; bottom: 3px; transform: translateX(-50%);
+    width: 4px; height: 4px; border-radius: 50%;
+    background: transparent; border: 1px solid var(--grad-b);
   }
   .cal-cell.today { box-shadow: inset 0 0 0 1px var(--grad-a); }
   .cal-cell.sel { background: var(--grad-a); color: #fff; }
@@ -290,6 +300,7 @@
   var textEl = document.getElementById('f-text');
 
   var rows = [];
+  var planMap = {};        // date → {slots, captured_at}; see planOf()
 
   // Month calendar state (Monday-first, 7 columns).
   var selectedDay = '';   // 'YYYY-MM-DD' or '' (all)
@@ -424,6 +435,8 @@
     document.getElementById('cal-title').textContent = viewYear + ' 年 ' + (viewMonth + 1) + ' 月';
     var diaryDates = {};
     rows.forEach(function (r) { diaryDates[r.date] = true; });
+    var planDates = {};
+    Object.keys(planMap).forEach(function (d) { if (planOf(d)) planDates[d] = true; });
     var today = todayISO();
     var firstDow = (new Date(viewYear, viewMonth, 1).getDay() + 6) % 7; // 0 = Monday
     var dim = new Date(viewYear, viewMonth + 1, 0).getDate();
@@ -435,6 +448,7 @@
       var iso = isoOf(viewYear, viewMonth, d);
       var cls = 'cal-cell'
         + (diaryDates[iso] ? ' has' : '')
+        + (planDates[iso] ? ' plan' : '')
         + (iso === today ? ' today' : '')
         + (iso === selectedDay ? ' sel' : '');
       html += '<div class="' + cls + '" data-date="' + iso + '">' + d + '</div>';
@@ -466,10 +480,29 @@
     var fMood = moodEl.value;
     var q = textEl.value.trim().toLowerCase();
 
+    // Diary rows plus plan-only days (a day can have a Weekly plan without a
+    // journal entry — those used to be invisible).
+    var items = rows.map(function (r) { return { kind: 'diary', date: r.date, row: r }; });
+    Object.keys(planMap).forEach(function (d) {
+      if (!planOf(d)) return;
+      for (var i = 0; i < rows.length; i++) if (rows[i].date === d) return;
+      items.push({ kind: 'plan', date: d });
+    });
+    items.sort(function (a, b) { return a.date < b.date ? 1 : a.date > b.date ? -1 : 0; });
+
     var html = [];
-    rows.forEach(function (r) {
-      if (fFrom && r.date < fFrom) return;
-      if (fTo && r.date > fTo) return;
+    items.forEach(function (it) {
+      if (fFrom && it.date < fFrom) return;
+      if (fTo && it.date > fTo) return;
+
+      if (it.kind === 'plan') {
+        // No diary fields to match a mood/text filter against.
+        if (fMood || q) return;
+        html.push(planOnlyCard(it.date));
+        return;
+      }
+
+      var r = it.row;
       if (fMood && String(r.mood) !== fMood) return;
       var hay = [r.worry, r.highlight, r.tomorrow_plan, r.improve, r.summary_line]
         .join(' ').toLowerCase();
@@ -492,6 +525,7 @@
             '</div>' +
           '</div>' +
           (env.length ? '<div class="env-line">' + esc(env.join(' · ')) + '</div>' : '') +
+          planBlock(r.date) +
           '<div class="row"><div class="k">📌 今日要点</div><div class="v">' + esc(dash(r.worry)) + '</div></div>' +
           '<div class="row"><div class="k">⭐ 亮点</div><div class="v">' + esc(dash(r.highlight)) + '</div></div>' +
           '<div class="row"><div class="k">🎯 明日</div><div class="v">' + esc(dash(r.tomorrow_plan)) + '</div></div>' +
@@ -508,6 +542,23 @@
     });
 
     listEl.innerHTML = html.length ? html.join('') : emptyHtml();
+  }
+
+  /** A day that has a Weekly plan but no journal entry: show the plan and
+   *  offer to write the entry that goes with it. */
+  function planOnlyCard(date) {
+    var p = planOf(date);
+    var when = p.captured_at ? '存档 ' + hhmmLocal(p.captured_at) : '当日计划';
+    return '<div class="card card-plan-only">' +
+      '<div class="card-head">' +
+        '<div><span class="card-date">' + esc(date) + '</span> ' +
+          '<span class="card-meta">没有写日记</span></div>' +
+        '<div class="card-meta">' + esc(when) +
+          '<button class="card-edit" data-date="' + esc(date) + '" type="button">✍️ 补写</button>' +
+        '</div>' +
+      '</div>' +
+      (date === liveDay ? '' : slotRowsHtml(p.slots)) +
+      '</div>';
   }
 
   /** Nothing matched: if a single day is selected and has no diary yet, offer
@@ -533,6 +584,7 @@
       .then(function (resp) { return resp.json(); })
       .then(function (payload) {
         rows = (payload && payload.diary) || (Array.isArray(payload) ? payload : []);
+        planMap = (payload && payload.plans) || {};
         setPlanLink(payload && payload.weekly_plan_url);
         renderCalendar();
         renderStreak();
@@ -560,20 +612,68 @@
   // ---- Today's schedule (Weekly grid, incl. synced calendar events) ----
   var SCHEDULE_URL = API_URL.replace(/\/diary$/, '/schedule');
   var scheduleEl = document.getElementById('schedule');
+  // The day whose plan the live panel is already showing — its card then skips
+  // the archived copy so the same timetable isn't printed twice.
+  var liveDay = '';
 
-  /** Merge consecutive 30-minute slots that carry the same task into one row. */
+  /** Merge consecutive 30-minute slots that carry the same task into one row.
+   *  Tracks how many of the merged slots were scored so a partly-done block
+   *  isn't shown as fully done. */
   function mergeSlots(slots) {
     var out = [];
     (slots || []).forEach(function (s) {
       var start = s.time;
+      var done = parseFloat(s.score) > 0 ? 1 : 0;
       var last = out[out.length - 1];
       if (last && last.task === s.task && last.end === start) {
         last.end = addMinutes(start, 30);
+        last.spans += 1;
+        last.done += done;
       } else {
-        out.push({ start: start, end: addMinutes(start, 30), task: s.task, score: s.score });
+        out.push({
+          start: start, end: addMinutes(start, 30), task: s.task,
+          spans: 1, done: done
+        });
       }
     });
     return out;
+  }
+
+  /** One row per merged slot: `✓` when every slot in it is done, `◐` when some. */
+  function slotRowsHtml(slots) {
+    return '<div class="sch-items">' + mergeSlots(slots).map(function (m) {
+      var mark = m.done === m.spans ? ' ✓' : (m.done > 0 ? ' ◐' : '');
+      return '<div class="sch-item">' +
+        '<span class="sch-time">' + esc(m.start) + '–' + esc(m.end) + '</span>' +
+        '<span class="sch-task">' + esc(m.task) + mark + '</span></div>';
+    }).join('') + '</div>';
+  }
+
+  /** ISO timestamp → 'HH:MM' in the browser's zone ('' when unparseable). */
+  function hhmmLocal(iso) {
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    return pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+  }
+
+  /** Archived copy of a day's Weekly plan, shown inside its card. Skipped when
+   *  the live panel above already prints the same day. */
+  /** Archived Weekly plans, keyed by date: {date: {slots, captured_at}}.
+   *  Separate from `rows` because a day can have a plan without a diary row. */
+  function planOf(date) {
+    var p = planMap[date];
+    return (p && p.slots && p.slots.length) ? p : null;
+  }
+
+  function planBlock(date) {
+    if (date === liveDay) return '';
+    var p = planOf(date);
+    if (!p) return '';
+    var when = p.captured_at ? '存档 ' + hhmmLocal(p.captured_at) : '当日计划';
+    return '<div class="plan-block">' +
+      '<div class="plan-title">📅 当日排程 <span class="plan-when">' + esc(when) + '</span></div>' +
+      slotRowsHtml(p.slots) +
+      '</div>';
   }
 
   function renderSchedule(data) {
@@ -582,12 +682,7 @@
     var html = '<div class="sch-head"><span>📅 今日排程</span>' +
       '<span class="sch-day">' + esc(data.day || '') + ' ' + esc(data.weekday || '') + '</span></div>';
     if (merged.length) {
-      html += '<div class="sch-items">' + merged.map(function (m) {
-        var done = parseFloat(m.score) > 0 ? ' ✓' : '';
-        return '<div class="sch-item">' +
-          '<span class="sch-time">' + esc(m.start) + '–' + esc(m.end) + '</span>' +
-          '<span class="sch-task">' + esc(m.task) + done + '</span></div>';
-      }).join('') + '</div>';
+      html += slotRowsHtml(data.slots);
     } else {
       html += '<div class="sch-empty">今天还没有排程（可在 Weekly 表格里安排，日历事件会自动同步进来）</div>';
     }
@@ -596,6 +691,13 @@
     }
     scheduleEl.innerHTML = html;
     scheduleEl.hidden = false;
+
+    // Only claim to be showing this day's plan when there is one to show: if
+    // the grid is empty today, the card falls back to its archived copy.
+    if (merged.length && liveDay !== data.day) {
+      liveDay = data.day || '';
+      render();
+    }
   }
 
   function loadSchedule() {
@@ -719,6 +821,8 @@
           if (idx >= 0) rows[idx] = saved; else rows.push(saved);
           rows.sort(function (a, b) { return a.date < b.date ? 1 : a.date > b.date ? -1 : 0; });
         }
+        // The save response carries the day's refreshed plan snapshot.
+        if (res.body.plan) planMap[d] = res.body.plan;
         editorEl.hidden = true;
         renderCalendar();
         renderStreak();

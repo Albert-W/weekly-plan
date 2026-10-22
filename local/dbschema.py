@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Diary table column migrations, shared by pull_diary.py / enrich_diary.py /
+"""Schema upgrades for the diary DB, shared by pull_diary.py / enrich_diary.py /
 serve.py.
 
 schema.sql only shapes a brand-new DB (`CREATE TABLE IF NOT EXISTS`), so a
@@ -21,17 +21,44 @@ ADDED_COLUMNS = (
     ("pollen", "TEXT"),                    # JSON {"birch":n,"grass":n,"alder":n}
 )
 
-# Columns removed after the first release (LLM fields that were never acted on).
-DROPPED_COLUMNS = ("tags", "worry_controllable")
+# Columns removed after the first release. `plan_json`/`plan_captured_at` were
+# the first (row-attached) attempt at storing a day's plan; plans now live in
+# their own `plan_day` table so a day can have a plan without a diary entry.
+DROPPED_COLUMNS = ("tags", "worry_controllable", "plan_json", "plan_captured_at")
+
+# Per-day snapshots of the Weekly grid, keyed by date rather than by diary row.
+PLAN_DAY_DDL = """
+CREATE TABLE IF NOT EXISTS plan_day (
+  date        TEXT PRIMARY KEY,   -- 'YYYY-MM-DD'
+  slots_json  TEXT NOT NULL,      -- JSON [{"time","task","score"}]
+  captured_at TEXT NOT NULL       -- ISO8601 UTC of the last capture
+)"""
 
 
 def ensure_columns(conn):
-    """Bring a pre-existing `diary` table up to the current column set."""
+    """Bring a pre-existing DB up to the current schema (columns + tables)."""
     cols = {row[1] for row in conn.execute("PRAGMA table_info(diary)")}
     with conn:
         for name, decl in ADDED_COLUMNS:
             if name not in cols:
                 conn.execute("ALTER TABLE diary ADD COLUMN %s %s" % (name, decl))
+
+        conn.execute(PLAN_DAY_DDL)
+
+        # One-time move of row-attached snapshots into plan_day before the
+        # columns are dropped below.
+        if "plan_json" in cols:
+            moved = conn.execute(
+                "SELECT date, plan_json, plan_captured_at FROM diary"
+                " WHERE plan_json IS NOT NULL"
+            ).fetchall()
+            for date, slots_json, captured_at in moved:
+                conn.execute(
+                    "INSERT INTO plan_day(date, slots_json, captured_at) VALUES(?,?,?)"
+                    " ON CONFLICT(date) DO NOTHING",
+                    (date, slots_json, captured_at or ""),
+                )
+
         for dropped in DROPPED_COLUMNS:
             if dropped in cols:
                 conn.execute("ALTER TABLE diary DROP COLUMN " + dropped)

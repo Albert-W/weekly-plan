@@ -82,13 +82,16 @@ function handleLinksView_(e) {
 }
 
 /**
- * ?view=schedule&k=KEY — today's timetable for the diary page's "今日排程"
- * panel. readTodayGrid_ reads the Weekly grid's column for today, and
- * Calendar.js writes synced meetings into those same task cells, so planned
- * blocks and calendar events come from one source.
+ * ?view=schedule&k=KEY[&date=YYYY-MM-DD] — one day of the Weekly timetable.
+ * Without `date` it's today, which is what the diary page's "今日排程" panel
+ * wants. With `date` it can also answer for another day of the CURRENT week,
+ * which is how the Mac side backfills plans it missed (the grid is archived +
+ * cleared at week rollover, so older weeks have nothing left to read).
  *
- * Deliberately light (no quest/boss/xp reads): the diary page fetches it on
- * every load, and the local server caches the response for a few minutes.
+ * readGridForDayIndex_ reads the grid column, and Calendar.js writes synced
+ * meetings into those same task cells, so planned blocks and calendar events
+ * come from one source. Deliberately light (no quest/boss/xp reads): the diary
+ * page fetches it on every load and the local server caches it briefly.
  * @param {GoogleAppsScript.Events.DoGet} e
  * @returns {GoogleAppsScript.Content.TextOutput}
  */
@@ -96,18 +99,47 @@ function handleScheduleView_(e) {
   if (!strictAuth_(e)) return unauth_();
   try {
     var tz = getSpreadsheet_().getSpreadsheetTimeZone();
-    var now = new Date();
-    var grid = readTodayGrid_();
+    var p = (e && e.parameter) || {};
+    var day = p.date ? String(p.date) : Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+    var grid = readGridForDate_(day, tz);
     return json_({
       ok: true,
-      day: Utilities.formatDate(now, tz, 'yyyy-MM-dd'),
-      weekday: Utilities.formatDate(now, tz, 'EEEE'),
-      slots: grid.slots,             // [{ time, task, score }]
-      empty_slots: grid.empty_slots  // ['09:00', ...] unplanned 30-min slots
+      day: day,
+      weekday: Utilities.formatDate(parseYmd_(day), tz, 'EEEE'),
+      in_current_week: grid !== null,
+      slots: grid ? grid.slots : [],             // [{ time, task, score }]
+      empty_slots: grid ? grid.empty_slots : []  // ['09:00', ...] unplanned
     });
   } catch (err) {
     return json_({ ok: false, error: String(err && err.message ? err.message : err) });
   }
+}
+
+/**
+ * Parse 'YYYY-MM-DD' to local midnight. Falls back to now for junk input so
+ * callers never blow up on a malformed query string.
+ * @param {string} ymd
+ * @returns {Date}
+ */
+function parseYmd_(ymd) {
+  var m = String(ymd || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return new Date();
+  return new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
+}
+
+/**
+ * Grid slots for a date, or null when that date isn't in the week the grid
+ * currently shows (reading a column would then be another week's data).
+ * @param {string} dateStr 'YYYY-MM-DD'
+ * @param {string} tz spreadsheet timezone
+ * @returns {{slots: Array, empty_slots: Array}|null}
+ */
+function readGridForDate_(dateStr, tz) {
+  var req = parseYmd_(dateStr);
+  var reqMonday = formatDateYYYYMMDD(getMonday(req));
+  var nowMonday = formatDateYYYYMMDD(getMonday(new Date()));
+  if (reqMonday !== nowMonday) return null;
+  return readGridForDayIndex_((req.getDay() + 6) % 7);  // 0 = Monday
 }
 
 /**
@@ -399,12 +431,21 @@ function _calcStreak(sheet, row, dayIndex) {
 
 // ---- 今日 Grid 读取 ----
 
+/** Today's day column (0 = Monday). Thin wrapper over readGridForDayIndex_. */
 function readTodayGrid_() {
+  return readGridForDayIndex_(getCurrentDayIndex());
+}
+
+/**
+ * Slots for one day column of the current week's grid.
+ * @param {number} dayIndex 0 = Monday … 6 = Sunday
+ * @returns {{slots: Array, empty_slots: Array}}
+ */
+function readGridForDayIndex_(dayIndex) {
   var sheet = getSheetByName_(CONFIG.WEEKLY_SHEET);
   if (!sheet) return { slots: [], empty_slots: [] };
 
   var W = CONFIG.WEEKLY;
-  var dayIndex = getCurrentDayIndex();
   if (dayIndex < 0 || dayIndex >= W.DAYS_IN_WEEK) {
     return { slots: [], empty_slots: [] };
   }
